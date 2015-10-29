@@ -1,0 +1,163 @@
+/* src/lve_kmod_c.h.in.  Generated from configure.ac by autoheader.  */
+
+/* git hash for build */
+#undef GIT_HASH
+
+/* cgroup_attach_task has 2 args */
+#undef HAVE_2ARGS_CGROUP_ATTACH_TASK
+
+/* copy_mnt_ns has 3 args */
+#undef HAVE_3ARGS_COPY_MNT_NS
+
+/* bc have a fork_sub exist CL patch */
+#undef HAVE_BC_FORK_SUB
+
+/* cgroup_attach_task exists */
+#undef HAVE_CGROUP_ATTACH_TASK
+
+/* cgroup_iter_end exported */
+#undef HAVE_CGROUP_ITER_END
+
+/* cgroup_iter_next exported */
+#undef HAVE_CGROUP_ITER_NEXT
+
+/* cgroup_iter_start exported */
+#undef HAVE_CGROUP_ITER_START
+
+/* cgroup_mutex exists */
+#undef HAVE_CGROUP_MUTEX
+
+/* compat_alloc_user_space exported */
+#undef HAVE_COMPAT_ALLOC_USER_SPACE
+
+/* create_new_namespaces exists */
+#undef HAVE_CREATE_NEW_NAMESPACES
+
+/* dentry_open has path parameter */
+#undef HAVE_DENTRY_OPEN_PATH
+
+/* have do_each_thread_all in sched.h */
+#undef HAVE_DO_EACH_THREAD_ALL
+
+/* dup_mnt_ns exist on kernel */
+#undef HAVE_DUP_MNT_NS
+
+/* virtinfo.h has VIRTINFO_EXEC */
+#undef HAVE_EXEC_NOTIFIER
+
+/* have in_ub_memcg_attach in sched.h */
+#undef HAVE_IN_UB_MEMCG_ATTACH
+
+/* new FS struct API */
+#undef HAVE_KILL_FS
+
+/* new loadavg hook */
+#undef HAVE_LOADAVG_PTR
+
+/* mem_cgroup_root exists */
+#undef HAVE_MEM_CGROUP_ROOT
+
+/* mnt_namespace.h exist on kernel */
+#undef HAVE_MNT_NAMESPACE_H
+
+/* namespace.h exist on kernel */
+#undef HAVE_NAMESPACE_H
+
+/* path.h exists on kernel */
+#undef HAVE_PATH_H
+
+/* path_lookup is exported */
+#undef HAVE_PATH_LOOKUP
+
+/* cred->euid is integer */
+#undef HAVE_PLAIN_CRED_EUID
+
+/* proc_root exist on kernel */
+#undef HAVE_PROC_ROOT
+
+/* put_mnt_ns */
+#undef HAVE_PUT_MNT_NS
+
+/* switch_task_namespace exist on kernel */
+#undef HAVE_SWITCH_NS
+
+/* new pid API */
+#undef HAVE_TASK_PID_TYPE_VE
+
+/* use ub_attach */
+#undef HAVE_UB_ATTACH
+
+/* use ub_attach_task */
+#undef HAVE_UB_ATTACH_TASK
+
+/* ub_bound_cgroup_mnt exists */
+#undef HAVE_UB_BOUND_CGROUP_MNT
+
+/* have ub_cgroup in struct user_beancounter */
+#undef HAVE_UB_CGROUP
+
+/* ub_cgroup_mnt exists */
+#undef HAVE_UB_CGROUP_MNT
+
+/* ub_cgroup_root exists */
+#undef HAVE_UB_CGROUP_ROOT
+
+/* have ub_get_mem_cgroup_parms */
+#undef HAVE_UB_GET_MEM_CGROUP_PARMS
+
+/* ub->rl_step defined */
+#undef HAVE_UB_RL_STEP
+
+/* user beancounter shortage callback */
+#undef HAVE_UB_SHORTAGE_CB
+
+/* ub_sync_memcg exported */
+#undef HAVE_UB_SYNC_MEMCG
+
+/* have ve_cleanup_chain in ve_proto.h */
+#undef HAVE_VE_CLEANUP_CHAIN
+
+/* have proc_root in struct ve_struct */
+#undef HAVE_VE_PROC_ROOT
+
+/* have ve_task_info in struct task_struct */
+#undef HAVE_VE_TASK_INFO
+
+/* vfs_rename has 5 args */
+#undef HAVE_VFS_RENAME_WITH_5ARGS
+
+/* vfs_rename has 6 args */
+#undef HAVE_VFS_RENAME_WITH_6ARGS
+
+/* Define to the address where bug reports for this package should be sent. */
+#undef PACKAGE_BUGREPORT
+
+/* Define to the full name of this package. */
+#undef PACKAGE_NAME
+
+/* Define to the full name and version of this package. */
+#undef PACKAGE_STRING
+
+/* Define to the one symbol short name of this package. */
+#undef PACKAGE_TARNAME
+
+/* Define to the home page for this package. */
+#undef PACKAGE_URL
+
+/* Define to the version of this package. */
+#undef PACKAGE_VERSION
+
+/* nearest lve version tag */
+#undef SWV
+
+/* use CL based api to change limits */
+#undef UBC_CL_API
+
+/* Define to empty if `const' does not conform to ANSI C. */
+#undef const
+
+/* Define to `__inline__' or `__inline' if that's what the C compiler
+   calls it, or to nothing if 'inline' is not supported under any name.  */
+#ifndef __cplusplus
+#undef inline
+#endif

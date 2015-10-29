@@ -1,0 +1,15 @@
+autom4te.cache
+config.log
+config.status
+config
+src/Makefile
+src/lve.ldscript
+src/lve_kmod_c.h
+src/lve_kmod_c.h.in~
+src/mod_info.h
+src/.lve.ko.cmd
+src/.tmp_versions
+src/Module.symvers
+src/lve.ko
+src/lve.mod.c
+src/modules.order

@@ -1,0 +1,38 @@
+ifneq ($(KERNELRELEASE),)
+    obj-m	:= lve.o
+    lve-objs	:= light_ve.o lve-mod.o tags.o lve_procfs.o lve_list.o
+    lve-objs	+= lve_exec.o kernel_exp.o lve_ns.o
+    lve-objs	+= lve_resource.o lve_stats.o lve_hooks.o
+    lve-objs	+= lve_global_params.o
+ifeq ($(CGROUP),1)
+ifeq ($(OPENVZ),1)
+    lve-objs	+= os/openvz_cgroups.o
+else
+    lve-objs	+= os/cgroups.o
+endif
+    lve-objs	+= os/cgroup_lib.o
+else
+    $(error Cloud Linux 5 is not supported by this lve-kmod branch)
+endif
+
+    EXTRA_LDFLAGS := -T $(src)/lve.ldscript
+else
+    KDIR        := @KERNEL@
+    PWD         := @PWD@
+
+default:
+	$(MAKE) -C $(KDIR) SUBDIRS=$(PWD) CGROUP=@CGROUP@ OPENVZ=@OPENVZ@ EXTRA_CFLAGS="-Werror -I @COMMON@ -I $(KDIR) @DEBUG_FL@ -DCGROUP=@CGROUP@ -DOPENVZ=@OPENVZ@ @LVE_PER_VE@" modules
+
+endif
+
+clean:
+	$(MAKE) -C $(KDIR) SUBDIRS=$(PWD) CGROUP=@CGROUP@ OPENVZ=@OPENVZ@ clean
+	rm -f Module.markers Module.symvers modules.order
+
+load:
+	insmod ./lve.ko
+
+unload:
+	rmmod lve
+
+
