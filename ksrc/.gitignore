@@ -2,10 +2,12 @@ autom4te.cache
 config.log
 config.status
 config
+configure
 src/Makefile
 src/lve.ldscript
 src/lve_kmod_c.h
 src/lve_kmod_c.h.in~
+src/lve_kmod_c.h.in
 src/mod_info.h
 src/.lve.ko.cmd
 src/.tmp_versions

@@ -7,13 +7,22 @@
 #include "kernel_exp.h"
 #include "tags.h"
 
-static notrace void lve_fork_hook(struct task_struct *new_task)
+#ifdef HAVE_CGROUP_POST_FORK_WITH_1ARG
+static notrace void lve_cgroup_post_fork_hook(struct task_struct *new_task)
+#elif defined(HAVE_CGROUP_POST_FORK_WITH_2ARGS)
+#include <linux/cgroup.h>
+static notrace void lve_cgroup_post_fork_hook(struct task_struct *new_task,
+					void *old_ss_priv[CGROUP_CANFORK_COUNT])
+#else
+#error "cgroup_post_fork has unsupported prototype"
+#endif
 {
 	switch_tag_fork(new_task);
-	lve_jprobe_ret();
+	jprobe_return();
 }
 
-static notrace void lve_free_task_hook(struct task_struct *tsk)
+#ifdef HAVE_PROC_EXIT_CONNECTOR
+static notrace void lve_proc_exit_connector_hook(struct task_struct *tsk)
 {
 	struct switch_data *sw_data;
 
@@ -21,20 +30,23 @@ static notrace void lve_free_task_hook(struct task_struct *tsk)
 	if (sw_data != NULL) {
 		LVE_DBG("sw_data=%p comm=%s\n", sw_data, tsk->comm);
 		lve_exit_task(tsk, sw_data);
-		LVE_TAG_PUT(sw_data);
+		/* Be careful here since last put can initiate i/o */
+		LVE_TAG_PUT_DELAYED(sw_data);
 	}
-
-	lve_jprobe_ret();
+	jprobe_return();
 }
+#else
+#error no proc exit connector
+#endif
 
 static struct jprobe lve_fork_jp = {
-	.entry		= JPROBE_ENTRY(lve_fork_hook),
+	.entry		= JPROBE_ENTRY(lve_cgroup_post_fork_hook),
 	.kp.symbol_name = "cgroup_post_fork"
 };
 
 static struct jprobe lve_free_task_jp = {
-	.entry		= JPROBE_ENTRY(lve_free_task_hook),
-	.kp.symbol_name	= "free_task",
+	.entry		= JPROBE_ENTRY(lve_proc_exit_connector_hook),
+	.kp.symbol_name	= "proc_exit_connector",
 };
 
 static struct jprobe *jp[] = {
@@ -44,11 +56,11 @@ static struct jprobe *jp[] = {
 
 int lve_hooks_init(void)
 {
-	return lve_jprobes_reg(jp, ARRAY_SIZE(jp));
+	return register_jprobes(jp, ARRAY_SIZE(jp));
 
 }
 
 void lve_hooks_fini(void)
 {
-	lve_jprobes_unreg(jp, ARRAY_SIZE(jp));
+	unregister_jprobes(jp, ARRAY_SIZE(jp));
 }

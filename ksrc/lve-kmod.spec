@@ -1,0 +1,99 @@
+%define buildforkernels current
+%define kmod_name lve-kmod
+
+Name:           %{kmod_name}
+Version:        1.5
+Release:        2%{?dist}
+Summary:        LVE kernel module
+Group:          System Environment/Kernel
+License:        GPLv2
+URL:            http://www.cloudlinux.com
+Source0:        %{kmod_name}-%{version}.tar.bz2
+Source1:        kmodtool.%{kmod_name}
+
+%define kmodtool sh %{SOURCE1}
+
+BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
+ExclusiveArch:  i686 x86_64
+
+# get the needed BuildRequires (in parts depending on what we build for)
+BuildRequires:  autoconf automake git
+%if "%{?dist}" == ".el6h"
+BuildRequires: devtoolset-2-gcc
+BuildRequires: devtoolset-2-binutils
+BuildRequires: devtoolset-4-gcc
+%endif
+%if %{?rhel} > 6
+BuildRequires: devtoolset-4-gcc
+%endif
+%{!?kernels:BuildRequires: buildsys-build-cloudlinux-kerneldevpkgs-%{?buildforkernels:%{buildforkernels}}%{!?buildforkernels:current}-%{_target_cpu} }
+# kmodtool does its magic here
+%{expand:%(%{kmodtool} --target %{_target_cpu} --noakmod --repo cloudlinux --kmodname %{name} %{?buildforkernels:--%{buildforkernels}} %{?kernels:--for-kernels "%{?kernels}"} 2>/dev/null) }
+
+%description
+
+%prep
+# error out if there was something wrong with kmodtool
+%{?kmodtool_check}
+# print kmodtool output for debugging purposes:
+kmodtool  --target %{_target_cpu}  --repo cloudlinux --kmodname %{name}  %{?buildforkernels:--%{buildforkernels}} %{?kernels:--for-kernels "%{?kernels}"} 2>/dev/null
+%setup -q
+
+pwd
+sed -i "s/@SWV@/%{version}/" ksrc/src/mod_info.h.in
+sed -i "s/@GIT@/%{release}/" ksrc/src/mod_info.h.in
+for kernel_version  in %{?kernel_versions}; do
+    cp -a ksrc _kmod_build_${kernel_version%%___*}
+    pushd _kmod_build_${kernel_version%%___*}
+    ./autogen.sh
+%if "%{?dist}" == ".el6h"
+    if echo ${kernel_version%%___*} | grep debug > /dev/null; then
+        export CC=/opt/rh/devtoolset-4/root/usr/bin/gcc
+    else
+        export CC=/opt/rh/devtoolset-2/root/usr/bin/gcc
+    fi
+%endif
+%if %{?rhel} == 7
+    if echo ${kernel_version%%___*} | grep debug > /dev/null; then
+        export CC=/opt/rh/devtoolset-4/root/usr/bin/gcc
+    fi
+%endif
+    ./configure --with-kernel="${kernel_version##*___}"
+    popd
+done
+
+%build
+for kernel_version  in %{?kernel_versions}; do
+    pushd _kmod_build_${kernel_version%%___*}/src
+%if "%{?dist}" == ".el6h"
+    if echo ${kernel_version%%___*} | grep debug > /dev/null; then
+        Cc=CC=/opt/rh/devtoolset-4/root/usr/bin/gcc
+    else
+        Cc=CC=/opt/rh/devtoolset-2/root/usr/bin/gcc
+    fi
+%endif
+%if %{?rhel} == 7
+    if echo ${kernel_version%%___*} | grep debug > /dev/null; then
+        Cc=CC=/opt/rh/devtoolset-4/root/usr/bin/gcc
+    fi
+%endif
+    make $Cc
+    popd
+done
+
+%install
+rm -rf $RPM_BUILD_ROOT
+for kernel_version  in %{?kernel_versions} ; do
+  mkdir -p $RPM_BUILD_ROOT%{kmodinstdir_prefix}/${kernel_version%%___*}/%{kmodinstdir_postfix}
+  pushd _kmod_build_${kernel_version%%___*}/src
+    install -D -m 0755 *.ko $RPM_BUILD_ROOT%{kmodinstdir_prefix}/${kernel_version%%___*}/%{kmodinstdir_postfix}
+  popd
+done
+
+%{?akmod_install}
+
+%clean
+rm -rf $RPM_BUILD_ROOT
+
+
+%changelog

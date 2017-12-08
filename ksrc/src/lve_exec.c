@@ -1,19 +1,19 @@
 #include "lve_kmod_c.h"
 
-#ifdef HAVE_EXEC_NOTIFIER
-
 #include <linux/kernel.h>
 #include <linux/spinlock.h>
 #include <linux/namei.h>
 #include <linux/mount.h>
-#include <linux/virtinfo.h>
 #include <linux/binfmts.h>
 #include <linux/uaccess.h>
 #include <linux/slab.h>
 #include <linux/sched.h>
 
 #include "lve_internal.h"
+#include "lve_debug.h"
 #include "resource.h"
+#include "lve_task_locker.h"
+#include "lve_callchain.h"
 
 struct lve_exec_entry *
 lve_exec_find_entry(struct lvp_ve_private *lvp, struct dentry *dentry)
@@ -34,7 +34,7 @@ int lve_exec_add_file(struct lvp_ve_private *lvp, char *name)
 	struct nameidata nd;
 	int rc;
 
-	rc = lve_path_lookup(name, LOOKUP_FOLLOW, &nd);
+	rc = kern_path(name, LOOKUP_FOLLOW, &nd.path);
 	if (rc)
 		goto out;
 
@@ -67,7 +67,7 @@ int lve_exec_del_file(struct lvp_ve_private *lvp, char *name)
 	int rc;
 
 	if (name) {
-		rc = lve_path_lookup(name, LOOKUP_FOLLOW, &nd);
+		rc = kern_path(name, LOOKUP_FOLLOW, &nd.path);
 		if (rc)
 			goto out;
 	}
@@ -108,44 +108,35 @@ static int lve_exec_need_enter(struct lvp_ve_private *lvp,
 	return rc;
 }
 
-static int lve_exec_notify(struct vnotifier_block *self,
-			   unsigned long event, void *arg, int old_ret)
+static int lve_exec_notify(void *arg)
 {
 	struct linux_binprm *bprm;
 	uid_t euid;
 	int rc;
-
-	if (event != VIRTINFO_EXEC)
-		return old_ret;
 
 	bprm = arg;
 	euid = lve_cred_euid(bprm->cred);
 
 	/* Should be ignored for UID=0 (CKSIX-40) */
 	if (euid == 0)
-		return NOTIFY_OK;
+		return 0;
 
 	/* Should be ignored if already in LVE */
 	if (NODEID_LVEID(lve_node_id(current)) != ROOT_LVE)
-		return NOTIFY_OK;
+		return 0;
 
 	rc = lve_exec_need_enter(TASK_VE_PRIVATE(current),
 				 bprm->file->f_dentry);
 	if (!rc)
-		return NOTIFY_OK;
+		return rc;
 
-	rc = _lve_enter(current, euid,
+	lve_task_lock(current);
+	rc = _lve_enter(current, TASK_VE_PRIVATE(current)->lvp_id, euid,
 			&(struct ve_enter){ NULL, LVE_ENTER_NAMESPACE });
-	if (rc)
-		return NOTIFY_FAIL;
+	lve_task_unlock(current);
 
-	return NOTIFY_OK;
+	return rc;
 }
-
-static struct vnotifier_block lve_exec_nb = {
-	.notifier_call = lve_exec_notify,
-};
-
 
 int lvp_exec_init(struct lvp_ve_private *lvp)
 {
@@ -163,16 +154,27 @@ void lvp_exec_fini(struct lvp_ve_private *lvp)
 	BUG_ON(rc != 0 && rc != -ESRCH);
 }
 
+static struct lve_call *exec_cb;
+
 int lve_exec_init(void)
 {
-	virtinfo_notifier_register(VITYPE_GENERAL, &lve_exec_nb);
+	int rc = 0;
 
-	return 0;
+	exec_cb = lve_callchain_register(LVE_EXEC, lve_exec_notify);
+	if (IS_ERR(exec_cb)) {
+		rc = PTR_ERR(exec_cb);
+		exec_cb = NULL;
+	}
+
+	if (rc == -ENOSYS) {
+		LVE_WARN("LVE_EXEC callback isn't implemented\n");
+		rc = 0;
+	}
+
+	return rc;
 }
 
 void lve_exec_fini(void)
 {
-	virtinfo_notifier_unregister(VITYPE_GENERAL, &lve_exec_nb);
+	lve_callchain_unregister(exec_cb);
 }
-
-#endif

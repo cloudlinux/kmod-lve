@@ -9,6 +9,12 @@
 #include <linux/mount.h>
 
 #include <linux/nsproxy.h>
+#include <linux/user_namespace.h>
+
+#ifdef LVE_PER_VE
+#include <linux/ve.h>
+#include <net/net_namespace.h>
+#endif
 
 #include "lve_debug.h"
 #include "lve_internal.h"
@@ -17,115 +23,65 @@
 #include "resource.h"
 #include "kernel_exp.h"
 
-#ifdef HAVE_CREATE_NEW_NAMESPACES
-#include <linux/init_task.h>
-struct nsproxy *create_new_namespaces(unsigned long flags,
-	struct task_struct *tsk, struct user_namespace *user_ns,
-	struct fs_struct *new_fs);
-
-struct nsproxy *lve_nsproxy_dup(struct nsproxy *ns)
+static inline void lve_put_nsproxy(struct nsproxy *ns)
 {
-	struct task_struct *task;
-	struct nsproxy *nsnew;
+        if (atomic_dec_and_test(&ns->count)) {
+#ifdef LVE_PER_VE
+		ns->net_ns = get_net(ve0.ve_netns);
+#endif
+                free_nsproxy(ns);
+        }
+}
 
-	task = kmalloc(sizeof(*task), GFP_KERNEL);
-	if (task == NULL) {
-		LVE_WARN("failed to allocate task_struct\n");
+
+static struct nsproxy *lve_copy_ns(struct nsproxy *old_ns,
+				struct fs_struct *new_fs)
+{
+	int rc;
+	struct cred *new_cred;
+	struct task_struct *tsk;
+
+	tsk = kzalloc(sizeof(*tsk), GFP_KERNEL);
+	if (tsk == NULL) {
+		LVE_ERR("Cannot allocate fake task\n");
 		return NULL;
 	}
 
-	task->nsproxy = ns;
-	nsnew = create_new_namespaces(0, task, NULL, NULL);
-	kfree(task);
+	tsk->nsproxy = old_ns;
+	tsk->fs = new_fs;
 
-	if (IS_ERR(nsnew)) {
-		LVE_WARN("failed to create new ns, err %ld\n", PTR_ERR(nsnew));
-		nsnew = NULL;
-	}
-
-	return nsnew;
-}
-#endif
-
-#if !defined(HAVE_SWITCH_NS)
-static inline void lve_put_ns(struct namespace *namespace)
-{
-	if (atomic_dec_and_lock(&namespace->count, &vfsmount_lock))
-		/* releases vfsmount_lock */
-		lve_ns_put_final(namespace);
-}
-
-struct nsproxy *lve_dup_proxy(struct nsproxy *ns, struct fs_struct *fs, struct vfsmount *new_root)
-{
-	struct nsproxy *ns2;
-	struct lve_mnt_namespace *lve_namespace;
-
-	if (new_root != NULL)
+	/*
+ 	 * We need to provide valid creds for copy_namespaces()
+ 	 * Just copy current creds and keep refcounters correct
+ 	 */
+	new_cred = prepare_creds();
+	if (new_cred == NULL) {
+		LVE_ERR("cannot copy current task creds\n");
+		kfree(tsk);
 		return NULL;
-
-	ns2 = dup_namespaces(ns);
-	if (ns2 == NULL) {
-		LVE_WARN("Can't copy nsproxy\n");
-		goto out;
 	}
-	lve_namespace = dup_namespace(container_of(&ns2, struct task_struct, nsproxy), fs);
-	if (!lve_namespace) {
-		LVE_WARN("Can't copy namespace\n");
-		put_nsproxy(ns2);
-		ns2 = NULL;
-		goto out;
-	}
-	/* drop the reference from dup_namespaces */
-	lve_put_ns(ns2->namespace);
-	ns2->namespace = lve_namespace;
-out:
-	return ns2;
-}
-#else
-struct nsproxy *lve_dup_proxy(struct nsproxy *ns, struct fs_struct *fs, struct vfsmount *new_root)
-{
-	struct nsproxy *ns2;
-	struct mnt_namespace *old;
 
-#ifndef HAVE_DUP_MNT_NS
-	/* NONE CL patches appled */
-	if (new_root)
-		return NULL;
+	atomic_inc(&new_cred->user->processes);
+        tsk->cred = tsk->real_cred = new_cred;
+
+	rc = lve_copy_namespaces(CLONE_NEWNS, tsk);
+	old_ns = tsk->nsproxy;
+	put_cred(new_cred);
+
+	kfree(tsk);
+
+	if (rc < 0) {
+		LVE_ERR("can't copy namespaces");
+		return ERR_PTR(rc);
+	}
+
+#ifdef LVE_PER_VE
+	put_net(old_ns->net_ns);
 #endif
 
-	ns2 = lve_nsproxy_dup(ns);
-	if (ns2 == NULL) {
-		LVE_WARN("Can't dup NS\n");
-		goto out;
-	}
-	old = ns2->mnt_ns;
-
-	LVE_DBG("dup mnt ns %p\n", new_root);
-#ifdef HAVE_DUP_MNT_NS
-	ns2->mnt_ns = dup_mnt_ns(ns2->mnt_ns, fs, new_root);
-#else
-	ns2->mnt_ns = lve_copy_mnt_ns(CLONE_NEWNS, ns2->mnt_ns, fs);
-#endif
-	if (old)
-		lve_put_mnt_ns(old);
-	LVE_DBG("nsproxy %p mnt_ns %p\n", ns2, ns2->mnt_ns);
-	if (IS_ERR(ns2->mnt_ns)) {
-		LVE_WARN("can't create mnt ns %ld\n", PTR_ERR(ns2->mnt_ns));
-		ns2->mnt_ns = NULL;
-		put_nsproxy(ns2);
-		ns2 = NULL;
-	}
-out:
-	return ns2;
+	return old_ns;
 }
-#endif
 
-#ifndef HAVE_KILL_FS
-static void lve_fs_get(struct fs_struct *fs)
-{
-	atomic_inc(&fs->count);
-}
-#else
 /* cl6 */
 static void lve_fs_get(struct fs_struct *fs)
 {
@@ -144,7 +100,6 @@ static void lve_fs_put(struct fs_struct *fs)
 	if (kill)
 		lve_free_fs_struct(fs);
 }
-#endif
 
 static void lve_namespace_switch(struct light_ve *ve,
 				 struct fs_struct *new_fs,
@@ -158,11 +113,11 @@ static void lve_namespace_switch(struct light_ve *ve,
 		new_fs, new_ns);
 	if (need_lock)
 		write_lock(&ve->lve_ns_lock);
-	old_fs = ve->lve_fs;
-	old_ns = ve->lve_nsproxy;
+	old_fs = ve->lve_namespace.lve_fs;
+	old_ns = ve->lve_namespace.lve_nsproxy;
 
-	ve->lve_fs = new_fs;
-	ve->lve_nsproxy = new_ns;
+	ve->lve_namespace.lve_fs = new_fs;
+	ve->lve_namespace.lve_nsproxy = new_ns;
 	if (need_lock)
 		write_unlock(&ve->lve_ns_lock);
 
@@ -170,7 +125,7 @@ static void lve_namespace_switch(struct light_ve *ve,
 		lve_fs_put(old_fs);
 
 	if (old_ns)
-		put_nsproxy(old_ns);
+		lve_put_nsproxy(old_ns);
 }
 
 static void lve_namespace_get(struct light_ve *ve,
@@ -178,25 +133,25 @@ static void lve_namespace_get(struct light_ve *ve,
 			      struct nsproxy **ns)
 {
 	read_lock(&ve->lve_ns_lock);
-	*fs = ve->lve_fs;
-	*ns = ve->lve_nsproxy;
+	*fs = ve->lve_namespace.lve_fs;
+	*ns = ve->lve_namespace.lve_nsproxy;
 
-	if (ve->lve_fs)
-		lve_fs_get(ve->lve_fs);
-	if (ve->lve_nsproxy)
-		get_nsproxy(ve->lve_nsproxy);
+	if (ve->lve_namespace.lve_fs)
+		lve_fs_get(ve->lve_namespace.lve_fs);
+	if (ve->lve_namespace.lve_nsproxy)
+		get_nsproxy(ve->lve_namespace.lve_nsproxy);
 	read_unlock(&ve->lve_ns_lock);
 }
 
-static int lve_namespace_clone(struct light_ve *ve,
+int lve_namespace_clone(struct light_ve *ve,
 			       struct nsproxy *old_ns,
 			       struct fs_struct *old_fs,
 			       struct path *new_root
 			      )
 {
+	int rc;
 	struct fs_struct *new_fs;
 	struct nsproxy *new_ns;
-	struct vfsmount *mnt_root = NULL;
 
 	new_fs = lve_copy_fs_struct(old_fs);
 	if (new_fs == NULL)
@@ -206,18 +161,26 @@ static int lve_namespace_clone(struct light_ve *ve,
 		LVE_DBG("try to use root %s mnt %p\n",
 			new_root->dentry->d_name.name, new_root->mnt);
 		lve_set_fs_root_pwd(new_fs, new_root);
-		mnt_root = new_root->mnt;
 	}
 
-	new_ns = lve_dup_proxy(old_ns, new_fs, mnt_root);
+	new_ns = lve_copy_ns(old_ns, new_fs);
+
+	if (IS_ERR(new_ns)) {
+		rc = PTR_ERR(new_ns);
+		goto ns_copy_fail;
+	}
+
 	if (new_ns == NULL) {
-		lve_fs_put(new_fs);
-		return -ENOMEM;
+		rc = -ENOMEM;
+		goto ns_copy_fail;
 	}
 
 	lve_namespace_switch(ve, new_fs, new_ns, true);
-
 	return 0;
+
+ns_copy_fail:
+	lve_fs_put(new_fs);
+	return rc;
 }
 
 int lve_namespace_fini(struct light_ve *ve)
@@ -257,7 +220,6 @@ int lve_namespace_set_default(void)
 				    current->fs, NULL);
 }
 
-#ifdef HAVE_DUP_MNT_NS
 int lve_namespace_set_root(struct light_ve *ve, const char __user *root)
 {
 	struct path path;
@@ -276,21 +238,29 @@ int lve_namespace_set_root(struct light_ve *ve, const char __user *root)
 		return -EMEDIUMTYPE;
 	}
 
+	if (test_and_set_bit(LVE_BIT_NS, &ve->lve_bit_flag))
+		return -EBUSY;
+
 	rc = lve_namespace_clone(ve, current->nsproxy, current->fs, &path);
 	path_put(&path);
 
+	if (rc != 0)
+		clear_bit(LVE_BIT_NS, &ve->lve_bit_flag);
+
 	return rc;
 }
-#else
-int lve_namespace_set_root(struct light_ve *ve, const char __user *root)
-{
-	return -ENOSYS;
-}
-#endif
-/* we are single user in that time so direct access to ve is OK */
+
 int lve_namespace_init(struct light_ve *ve)
 {
-	struct lvp_ve_private *lvp = ve->lve_lvp;
+	/* zero done via ve zalloc */
+	rwlock_init(&ve->lve_ns_lock);
+
+	return 0;
+}
+
+/* we are single user in that time so direct access to ve is OK */
+int lve_namespace_setup(struct lvp_ve_private *lvp, struct light_ve *ve)
+{
 	struct nsproxy *old_ns;
 	struct fs_struct *old_fs;
 	int rc = 0;
@@ -299,25 +269,24 @@ int lve_namespace_init(struct light_ve *ve)
 	if (lve_no_namespaces)
 		return 0;
 
-	rwlock_init(&ve->lve_ns_lock);
 	lve_namespace_get(lvp->lvp_default, &old_fs, &old_ns);
 	if (old_fs == NULL || old_ns == NULL) {
 		LVE_ERR("trying to create a namespace before setup\n");
 		return -EPROTO;
 	}
 
-
+	LVE_DBG("ns setup %p - %p/%p\n", ve, old_ns, old_fs);
 	rc = lve_namespace_clone(ve, old_ns, old_fs, NULL);
-	if (rc == 0) {
-		/* new root set - release old one from ns_get */
-		lve_fs_put(old_fs);
-		put_nsproxy(old_ns);
-	}
+
+	/* release references from lve_namespace_get() */
+	lve_fs_put(old_fs);
+	lve_put_nsproxy(old_ns);
 
 	return rc;
 }
 
-int lve_namespace_enter(struct task_struct *task, struct light_ve *ve)
+int lve_namespace_enter(struct task_struct *task, struct light_ve *ve,
+			struct lve_namespace *saved_ns)
 {
 	struct nsproxy *old_nsp;
 	struct nsproxy *lve_ns;
@@ -330,7 +299,7 @@ int lve_namespace_enter(struct task_struct *task, struct light_ve *ve)
 	lve_namespace_get(ve, &lve_fs, &lve_ns);
 	if (lve_ns == NULL || lve_fs == NULL) {
 		if (lve_ns)
-			put_nsproxy(lve_ns);
+			lve_put_nsproxy(lve_ns);
 		if (lve_fs)
 			lve_fs_put(lve_fs);
 		return -ENODEV;
@@ -341,25 +310,69 @@ int lve_namespace_enter(struct task_struct *task, struct light_ve *ve)
 	if (new_fs == NULL) {
 		LVE_ERR("copy_fs_struct failed\n");
 		/* release from get */
-		put_nsproxy(lve_ns);
+		lve_put_nsproxy(lve_ns);
 		return -ENOMEM;
 	}
 
 	task_lock(task);
-	old_nsp = get_nsproxy(task->nsproxy);
+	old_nsp = task->nsproxy;
+	get_nsproxy(task->nsproxy);
 	lve_fs = task->fs;
 	task->fs = new_fs;
 	task_unlock(task);
 
-	lve_switch_ns(task, lve_ns);
+	switch_task_namespaces(task, lve_ns);
 
-	lve_fs_put(lve_fs); /* replaced with task fs */
-	put_nsproxy(old_nsp);
+	if (saved_ns != NULL) {
+		if (saved_ns->lve_fs != NULL)
+			lve_fs_put(saved_ns->lve_fs);
+
+		saved_ns->lve_fs = lve_fs;
+	} else {
+		lve_fs_put(lve_fs); /* replaced with task fs */
+	}
+
+	if (saved_ns != NULL) {
+		if (saved_ns->lve_nsproxy != NULL)
+			lve_put_nsproxy(saved_ns->lve_nsproxy);
+
+		saved_ns->lve_nsproxy = old_nsp;
+	} else {
+		lve_put_nsproxy(old_nsp);
+	}
 
 	return 0;
 }
 
-int lve_namespace_enter_admin(struct light_ve *ve)
+int lve_namespace_leave(struct task_struct *task,
+			struct lve_namespace *saved_ns)
+{
+	struct nsproxy *old_nsp;
+	struct fs_struct *lve_fs;
+
+	if (lve_no_namespaces)
+		return -ENOSYS;
+
+	task_lock(task);
+	old_nsp = task->nsproxy;
+	get_nsproxy(task->nsproxy);
+	lve_fs = task->fs;
+	task->fs = saved_ns->lve_fs;
+	task_unlock(task);
+
+	switch_task_namespaces(task, saved_ns->lve_nsproxy);
+
+	lve_fs_put(lve_fs); /* replaced with task fs */
+	lve_put_nsproxy(old_nsp);
+
+	saved_ns->lve_nsproxy = NULL;
+	saved_ns->lve_fs = NULL;
+
+	return 0;
+}
+
+int lve_namespace_enter_admin(struct light_ve *ve,
+			      struct lve_namespace *saved_ns)
 {
 	struct nsproxy *old_nsp;
 	struct fs_struct *old_fs;
@@ -376,22 +389,38 @@ int lve_namespace_enter_admin(struct light_ve *ve)
 	lve_namespace_get(ve, &lve_fs, &lve_ns);
 	if (lve_ns == NULL || lve_fs == NULL) {
 		if (lve_ns)
-			put_nsproxy(lve_ns);
+			lve_put_nsproxy(lve_ns);
 		if (lve_fs)
 			lve_fs_put(lve_fs);
 		return -ENODEV;
 	}
 
 	task_lock(task);
-	old_nsp = get_nsproxy(task->nsproxy);
+	old_nsp = task->nsproxy;
+	get_nsproxy(task->nsproxy);
 	old_fs = task->fs;
 	task->fs = lve_fs;
 	task_unlock(task);
 
-	lve_switch_ns(task, lve_ns);
+	switch_task_namespaces(task, lve_ns);
 
-	lve_fs_put(old_fs);
-	put_nsproxy(old_nsp);
+	if (saved_ns != NULL) {
+		if (saved_ns->lve_fs != NULL)
+			lve_fs_put(saved_ns->lve_fs);
+
+		saved_ns->lve_fs = old_fs;
+	} else {
+		lve_fs_put(old_fs);
+	}
+
+	if (saved_ns != NULL) {
+		if (saved_ns->lve_nsproxy != NULL)
+			lve_put_nsproxy(saved_ns->lve_nsproxy);
+
+		saved_ns->lve_nsproxy = old_nsp;
+	} else {
+		lve_put_nsproxy(old_nsp);
+	}
 
 	return 0;
 }
@@ -402,8 +431,12 @@ int lve_namespace_assign(struct light_ve *ve)
 	struct nsproxy *new_ns;
 	struct task_struct *task = current;
 
+	if (test_and_set_bit(LVE_BIT_NS, &ve->lve_bit_flag))
+		return -EBUSY;
+
 	task_lock(task);
-	new_ns = get_nsproxy(task->nsproxy);
+	new_ns = task->nsproxy;
+	get_nsproxy(task->nsproxy);
 	new_fs = task->fs;
 	lve_fs_get(new_fs);
 	task_unlock(task);
@@ -411,4 +444,13 @@ int lve_namespace_assign(struct light_ve *ve)
 	lve_namespace_switch(ve, new_fs, new_ns, true);
 
 	return 0;
+}
+
+void lve_namespace_free(struct lve_namespace *saved_ns)
+{
+	if (saved_ns->lve_fs != NULL)
+		lve_fs_put(saved_ns->lve_fs);
+
+	if (saved_ns->lve_nsproxy != NULL)
+		lve_put_nsproxy(saved_ns->lve_nsproxy);
 }

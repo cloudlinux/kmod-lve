@@ -1,3 +1,5 @@
 MODULE_LICENSE("GPL");
+MODULE_VERSION("@SWV@-@GIT@");
+
 MODULE_AUTHOR("Alex Lyashkov <umka@cloudlinux.com>");
 MODULE_DESCRIPTION("light virtualization based on OpenVZ kernel");

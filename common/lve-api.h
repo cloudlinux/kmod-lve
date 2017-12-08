@@ -7,6 +7,10 @@
 #define __user
 #endif
 
+#define ROOT_LVE	(0)
+#define SELF_LVE	((uint32_t)~0)
+#define ROOT_LVP	(0)
+
 enum lve_limits {
 	LIM_CPU = 0,
 	LIM_IO,
@@ -27,6 +31,7 @@ enum lve_enter_flags {
 	LVE_ENTER_NO_UBC	= 1 << 1, /* don't attach ubc */
 	LVE_ENTER_NO_MAXENTER	= 1 << 2, /* don't check enter limit */
 	LVE_ENTER_SILENCE	= 1 << 3, /* don't print some messages */
+	LVE_ENTER_NO_KILLABLE	= 1 << 4, /* don't kill process while destroying lve */
 };
 
 struct ve_enter {
@@ -101,10 +106,62 @@ struct lve_pid_info_14 {
 	int32_t		leader;
 };
 
+enum lve_net_port_op {
+	LVE_NETPORT_DEFAULT,
+	LVE_NETPORT_ADD,
+	LVE_NETPORT_DEL,
+	LVE_NETPORT_INFO, /* not implement */
+};
+
+struct lve_net_port_14 {
+	uint16_t op; /* lve_net_port op enum */
+	uint16_t port; /* port to change */
+	uint16_t policy; /* == 0 deny, == 1 allow */
+};
+
+struct lve_net_limits_14 {
+	uint64_t in_lim;
+	uint64_t out_lim;
+};
+
+enum lve_freezer_op {
+	LVE_FREEZER_FREEZE,
+	LVE_FREEZER_THAW,
+};
+
+struct lve_freezer_control {
+	uint16_t op;
+};
+
 enum lve_resource_fails {
 	LVE_RESOURCE_FAIL_MEM	= 1 << 0,   /**< memory limit reached */
 	LVE_RESOURCE_FAIL_MEM_PHY = 1 << 1,  /**< physical memory limit reached */
 	LVE_RESOURCE_FAIL_NPROC	= 1 << 2,   /**< number of processes limit reached */
+};
+
+enum lve_map_op {
+	LVE_MAP_ADD,
+	LVE_MAP_MOVE,
+};
+
+struct lve_map_data {
+	uint32_t	lmd_lvp_id;
+	enum lve_map_op	lmd_op;
+};
+
+enum lvp_limits_op {
+	LVP_LIMIT_SELF,
+	LVP_LIMIT_DEFAULT,
+};
+
+struct lvp_limits_data {
+	enum lvp_limits_op	lld_op;
+	lve_limits_13_t		lld_ulimits;
+};
+
+struct lvp_info {
+	enum lvp_limits_op li_op;
+	struct lve_info_13 li_info;
 };
 
 /**
@@ -123,6 +180,7 @@ typedef enum {
 	SETUP_ENTER_VE_COMPAT = 16,
 	INFO_VE_COMPAT = 17,
 	ENTER_FS_COMPAT = 18,
+	LVE_FREEZER_CONTROL_COMPAT = 19,
 	/* NEW 0.8 api numbers */
 	DEFAULT_PARAMS_08 = _IOW('L', 0, lve_limits_t),
 	ENTER_VE	= _IO('L', 1),
@@ -158,6 +216,19 @@ typedef enum {
 	SET_GLOBAL_PARAM_VAL_14 = _IO('L', 29), /* set module global parameter value */
 	GET_GLOBAL_PARAM_VAL_14 = _IO('L', 30), /* get module global parameter value */
 	LVE_GET_PID_INFO_14 = _IO('L', 31), /* get lve id/flags of the task */
+	LVE_NET_PORT_14	= _IO('L', 32), /* set uid/port value */
+	LVE_SET_NET_LIMITS_14 = _IO('L', 33), /* set network limits */
+	LVE_FREEZER_CONTROL = _IO('L', 34), /* freezer control for a given LVE */
+	/* ===================================== */
+	/* reseller API must used after it point */
+	/* ===================================== */
+	LVE_LVP_API_MARK = _IO('L', 200),
+	/* new in 1.5 */	
+	LVE_LVP_CREATE_15 = _IO('L', 200), /* create reseller container */
+	LVE_LVP_DESTROY_15 = _IO('L', 201), /* destroy reseller container */
+	LVE_LVP_SETUP_15 = _IO('L', 202), /* setup reseller container limits */
+	LVE_LVP_MAP_15 = _IO('L', 203), /* map an LVE ID into reseller */
+	LVE_LVP_INFO_15 = _IO('L', 204), /* lvp info */
 } ve_op;
 
 struct ve_ioctl {
@@ -167,7 +238,7 @@ struct ve_ioctl {
 };
 
 #define LVE_KMOD_API_MAJOR	1
-#define LVE_KMOD_API_MINOR	4
+#define LVE_KMOD_API_MINOR	5
 
 #define LVE_API_VERSION(a, b) (((a) << 16) + (b))
 

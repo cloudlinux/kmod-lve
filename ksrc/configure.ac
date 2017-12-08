@@ -17,7 +17,7 @@
 AC_PREREQ(2.59)
 AC_INIT(lve-kmod, 1.1, umka@sevcity.net)
 AC_PREFIX_DEFAULT([/usr])
-AC_CONFIG_HEADER([src/lve_kmod_c.h])
+AC_CONFIG_HEADER([src/include/lve_kmod_c.h])
 
 AC_CANONICAL_BUILD
 AC_CANONICAL_HOST
@@ -146,83 +146,20 @@ else
 fi
 ])
 
-AC_DEFUN([LVE_3ARGS_COPY_MNT_NS], [
-AC_MSG_CHECKING([check copy_mnt_ns has 3 args])
-LVE_LINUX_TRY_COMPILE([
-	#include <linux/nsproxy.h>
-	#include <linux/mnt_namespace.h>
-],[
-	copy_mnt_ns(NULL, NULL, NULL);
-],[
-	AC_MSG_RESULT(yes)
-	AC_DEFINE(HAVE_3ARGS_COPY_MNT_NS, 1,
-		[copy_mnt_ns has 3 args])
-],[
-	AC_MSG_RESULT(NO)
-])
-])
-
 AC_DEFUN([LVE_EXEC_NOTIFIER],[
 AC_MSG_CHECKING([virtinfo.h has VIRTINFO_EXEC])
 LVE_LINUX_TRY_COMPILE([
         #include <linux/virtinfo.h>
 ],[
-	int v = VIRTINFO_EXEC;
+	int v;
+
+	v = VIRTINFO_EXEC;
 ],[
         AC_MSG_RESULT(yes)
         AC_DEFINE(HAVE_EXEC_NOTIFIER, 1,
                   [virtinfo.h has VIRTINFO_EXEC])
 ],[
         AC_MSG_RESULT(NO)
-])
-])
-
-AC_DEFUN([LVE_BC_FORK_SUB],[
-AC_MSG_CHECKING([bc_fork_sub exist in kernel])
-LVE_LINUX_TRY_COMPILE([
-        #include <include/bc/task.h.h>
-],[
-        struct task_beancounter bc;
-        
-        bc.fork_sub = NULL;
-],[
-        AC_MSG_RESULT(yes)
-        AC_DEFINE(HAVE_BC_FORK_SUB, 1,
-                  [bc have a fork_sub exist CL patch])
-],[
-        AC_MSG_RESULT(NO)
-])
-])
-
-AC_DEFUN([LVE_UB_HAS_RL_STEP],[
-AC_MSG_CHECKING([ub->rl_step exists in kernel])
-LVE_LINUX_TRY_COMPILE([
-        #include <bc/beancounter.h>
-],[
-        struct user_beancounter bc;
-
-        bc.rl_step = 0;
-],[
-        AC_MSG_RESULT(yes)
-        AC_DEFINE(HAVE_UB_RL_STEP, 1,
-                  [ub->rl_step defined])
-],[
-        AC_MSG_RESULT(NO)
-])
-])
-
-AC_DEFUN([LVE_PATH_LOOKUP],[
-AC_MSG_CHECKING([path_lookup exists in kernel])
-LVE_LINUX_TRY_COMPILE([
-	#include <linux/namei.h>
-],[
-	int rc = path_lookup(NULL, 0, NULL);
-],[
-	AC_MSG_RESULT(yes)
-	AC_DEFINE(HAVE_PATH_LOOKUP, 1,
-		[path_lookup is exported])
-],[
-	AC_MSG_RESULT(no)
 ])
 ])
 
@@ -244,31 +181,15 @@ LVE_LINUX_TRY_COMPILE([
 
 ### symbols
 
-AC_DEFUN([LVE_SYM_SYM_GET],[
-AC_MSG_CHECKING([__symbol_get exist in kernel])
-LVE_LINUX_TRY_COMPILE([
-	#include <linux/module.h>
-],[
-	void (*lve_sym)(const char *p) = __symbol_get;
-],[
-	LVE_SYM_ADDR(__symbol_get)
-	if test $sym_addr != "0x0"; then
-		SYM_SYM_GET="lve_sym_get = $sym_addr;"
-	fi
-],[
-	sym_addr=0
-])
-AC_SUBST([SYM_SYM_GET])
-AC_MSG_RESULT([$sym_addr])
-])
-
 AC_DEFUN([LVE_SYM_COPY_FS],[
 AC_MSG_CHECKING([copy_fs_struct exist in kernel])
 LVE_LINUX_TRY_COMPILE([
 	#include <linux/spinlock.h>
 	#include <linux/fs_struct.h>
 ],[
-	struct fs_struct *(*lve_copy_fs_struct)(struct fs_struct *) = copy_fs_struct;
+	struct fs_struct *(*lve_copy_fs_struct)(struct fs_struct *);
+
+	lve_copy_fs_struct = copy_fs_struct;
 ],[
 	LVE_SYM_ADDR(copy_fs_struct)
 	if test $sym_addr != "0x0"; then
@@ -281,25 +202,6 @@ AC_SUBST([SYM_COPY_FS])
 AC_MSG_RESULT([$sym_addr])
 ])
 
-AC_DEFUN([LVE_SYM_FS_PUT],[
-AC_MSG_CHECKING([put_fs_struct exist in kernel])
-LVE_LINUX_TRY_COMPILE([
-	#include <linux/spinlock.h>
-	#include <linux/fs_struct.h>
-],[
-	void (*lve_fs_put)(struct fs_struct *) = put_fs_struct;
-],[
-	LVE_SYM_ADDR(put_fs_struct)
-	if test $sym_addr != "0x0"; then
-		SYM_FS_PUT="lve_fs_put = $sym_addr;"
-	fi
-],[
-	sym_addr=0
-])
-AC_SUBST([SYM_FS_PUT])
-AC_MSG_RESULT([$sym_addr])
-])
-
 AC_DEFUN([LVE_SYM_FS_PWD],[
 AC_MSG_CHECKING([set_fs_pwd exist in kernel])
 LVE_LINUX_TRY_COMPILE([
@@ -307,10 +209,12 @@ LVE_LINUX_TRY_COMPILE([
 	#include <linux/fs_struct.h>
 ],[
 #ifdef HAVE_3ARGS_FS_SET_ROOT
-	void (*lve_set_fs_pwd)(struct fs_struct *, struct vfsmount *, struct dentry *) = set_fs_pwd
+	void (*lve_set_fs_pwd)(struct fs_struct *, struct vfsmount *, struct dentry *);
 #else
-	void (*lve_set_fs_pwd)(struct fs_struct *, struct path *) = set_fs_pwd;
+	void (*lve_set_fs_pwd)(struct fs_struct *, struct path *);
 #endif
+
+	lve_set_fs_pwd = set_fs_pwd;
 ],[
 	LVE_SYM_ADDR(set_fs_pwd)
 	if test $sym_addr != "0x0"; then
@@ -329,7 +233,9 @@ LVE_LINUX_TRY_COMPILE([
 	#include <linux/spinlock.h>
 	#include <linux/fs_struct.h>
 ],[
-	void (*lve_set_fs_root)(struct fs_struct *, struct path *) = set_fs_root;
+	void (*lve_set_fs_root)(struct fs_struct *, struct path *);
+
+	lve_set_fs_root = set_fs_root;
 ],[
 	LVE_SYM_ADDR(set_fs_root)
 	if test $sym_addr != "0x0"; then
@@ -342,279 +248,6 @@ AC_SUBST([SYM_FS_ROOT])
 AC_MSG_RESULT([$sym_addr])
 ])
 
-AC_DEFUN([LVE_SYM_JPROBE_RET],[
-AC_MSG_CHECKING([jprobe_return exist in kernel])
-LVE_LINUX_TRY_COMPILE([
-	#include <linux/kprobes.h>
-],[
-	void *(*lve_jprobe_ret)(void) = jprobe_return;
-],[
-	LVE_SYM_ADDR(jprobe_return)
-	if test $sym_addr != "0x0"; then
-		SYM_JPROBE_RET="lve_jprobe_ret = $sym_addr;"
-	fi
-],[
-	sym_addr=0
-])
-AC_SUBST([SYM_JPROBE_RET])
-AC_MSG_RESULT([$sym_addr])
-])
-
-AC_DEFUN([LVE_SYM_JPROBES_REG],[
-AC_MSG_CHECKING([register_jprobes exist in kernel])
-LVE_LINUX_TRY_COMPILE([
-	#include <linux/kprobes.h>
-],[
-	int (*lve_jprobes_reg)(struct jprobe **p, int num) = register_jprobes;
-],[
-	LVE_SYM_ADDR(register_jprobes)
-	if test $sym_addr != "0x0"; then
-		SYM_JPROBES_REG="lve_jprobes_reg = $sym_addr;"
-	fi
-],[
-	sym_addr=0
-])
-AC_SUBST([SYM_JPROBES_REG])
-AC_MSG_RESULT([$sym_addr])
-])
-
-AC_DEFUN([LVE_SYM_JPROBES_UNREG],[
-AC_MSG_CHECKING([unregister_jprobes exist in kernel])
-LVE_LINUX_TRY_COMPILE([
-	#include <linux/kprobes.h>
-],[
-	void (*lve_jprobes_unreg)(struct jprobe **p, int num) = unregister_jprobes;
-],[
-	LVE_SYM_ADDR(unregister_jprobes)
-	if test $sym_addr != "0x0"; then
-		SYM_JPROBES_UNREG="lve_jprobes_unreg = $sym_addr;"
-	fi
-],[
-	sym_addr=0
-])
-AC_SUBST([SYM_JPROBES_UNREG])
-AC_MSG_RESULT([$sym_addr])
-])
-
-AC_DEFUN([LVE_SYM_NS_PUT_FINAL],[
-AC_MSG_CHECKING([__put_namespace exist in kernel])
-LVE_LINUX_TRY_COMPILE([
-		#include <linux/namespace.h>
-],[
-	void (*lve_ns_put_final)(struct namespace *namespace) = __put_namespace;
-],[
-	LVE_SYM_ADDR(__put_namespace)
-	if test $sym_addr != "0x0"; then
-		SYM_NS_PUT_FINAL="lve_ns_put_final = $sym_addr;"
-	fi
-],[
-	sym_addr=0
-])
-AC_SUBST([SYM_NS_PUT_FINAL])
-AC_MSG_RESULT([$sym_addr])
-])
-
-AC_DEFUN([LVE_SYM_TASK_PUT_FINAL],[
-AC_MSG_CHECKING([__put_task_struct exist in kernel])
-LVE_LINUX_TRY_COMPILE([
-		#include <linux/sched.h>
-],[
-	void (*lve_task_put_final)(struct task_struct *arg) = __put_task_struct;
-],[
-	LVE_SYM_ADDR(__put_task_struct)
-	if test $sym_addr != "0x0"; then
-		SYM_TASK_PUT_FINAL="lve_task_put_final = $sym_addr;"
-	fi
-],[
-	sym_addr=0
-])
-AC_SUBST([SYM_TASK_PUT_FINAL])
-AC_MSG_RESULT([$sym_addr])
-])
-
-AC_DEFUN([LVE_SYM_NSPROXY_DUP],[
-AC_MSG_CHECKING([duplicate_nsproxy exist in kernel])
-LVE_LINUX_TRY_COMPILE([
-	#include <linux/nsproxy.h>
-],[
-	struct nsproxy *(*lve_sym)(struct nsproxy *) = duplicate_nsproxy;
-],[
-	LVE_SYM_ADDR(duplicate_nsproxy)
-	if test $sym_addr != "0x0"; then
-		SYM_NSPROXY_DUP="lve_nsproxy_dup = $sym_addr;"
-	fi
-],[
-	sym_addr=0
-])
-AC_SUBST([SYM_NSPROXY_DUP])
-AC_MSG_RESULT([$sym_addr])
-])
-
-AC_DEFUN([LVE_SYM_NS_SWITCH],[
-AC_MSG_CHECKING([switch_task_namespaces exist in kernel])
-LVE_LINUX_TRY_COMPILE([
-	#include <linux/nsproxy.h>
-],[
-	struct nsproxy *(*lve_switch_ns)(struct nsproxy *, struct task *) = switch_task_namespaces;
-],[
-	LVE_SYM_ADDR(switch_task_namespaces)
-	if test $sym_addr != "0x0"; then
-		SYM_SWITCH_NS="lve_switch_ns = $sym_addr;"
-	fi
-],[
-	sym_addr=0
-])
-AC_SUBST([SYM_SWITCH_NS])
-AC_MSG_RESULT([$sym_addr])
-])
-
-AC_DEFUN([LVE_SYM_FTRACE_PRINTK],[
-AC_MSG_CHECKING([__ftrace_vprintk in kernel])
-LVE_LINUX_TRY_COMPILE([
-	#include <linux/kernel.h>
-],[
-	int (*lve_sym)(unsigned long ip, const char *fmt, va_list ap) = __ftrace_vprintk;
-],[
-	LVE_SYM_ADDR(__ftrace_vprintk)
-	if test $sym_addr != "0x0"; then
-		SYM_FTRACE_VPRINTK="lve_vprintk = $sym_addr;"
-	fi
-],[
-	sym_addr=0
-])
-AC_SUBST([SYM_FTRACE_VPRINTK])
-AC_MSG_RESULT([$sym_addr])
-])
-
-AC_DEFUN([LVE_SYM_CSS_PUT],[
-AC_MSG_CHECKING([__css_put in kernel])
-LVE_LINUX_TRY_COMPILE([
-	#include <linux/cgroup.h>
-],[
-	void (*lve_sym)(struct cgroup_subsys_state *css) = __css_put;
-],[
-	LVE_SYM_ADDR(__css_put)
-	if test $sym_addr != "0x0"; then
-		SYM_CSS_PUT="__css_put = $sym_addr;"
-	fi
-],[
-	sym_addr=0
-])
-AC_SUBST([SYM_CSS_PUT])
-AC_MSG_RESULT([$sym_addr])
-])
-
-AC_DEFUN([LVE_SYM_COPY_MNT_NS],[
-AC_MSG_CHECKING([copy_mnt_ns in kernel])
-LVE_LINUX_TRY_COMPILE([
-	#include <linux/spinlock.h>
-	#include <linux/fs_struct.h>
-	#include <linux/nsproxy.h>
-	#include <linux/mnt_namespace.h>
-	#include <linux/user_namespace.h>
-],[
-
-#ifdef HAVE_3ARGS_COPY_MNT_NS
-	struct mnt_namespace * (*lve_sym)(unsigned long flags, struct mnt_namespace *ns,
-		struct fs_struct *new_fs) = copy_mnt_ns;
-#else
-	struct mnt_namespace * (*lve_sym)(unsigned long flags, struct mnt_namespace *ns,
-		struct user_namespace *us, struct fs_struct *new_fs) = copy_mnt_ns;
-#endif
-],[
-	LVE_SYM_ADDR(copy_mnt_ns)
-	if test $sym_addr != "0x0"; then
-		SYM_COPY_MNT_NS="_lve_copy_mnt_ns = $sym_addr;"
-	fi
-],[
-	sym_addr=0
-])
-AC_SUBST([SYM_COPY_MNT_NS])
-AC_MSG_RESULT([$sym_addr])
-])
-
-
-# -- TASKLIST_LOCK
-AC_DEFUN([LVE_SYM_TASKLIST_LOCK],[
-AC_MSG_CHECKING([tasklist_lock exists in kernel])
-LVE_LINUX_TRY_COMPILE([
-	#include <linux/kernel.h>
-	#include <linux/sched.h>
-],[
-	rwlock_t sym_addr = tasklist_lock;
-],[
-	LVE_SYM_ADDR(tasklist_lock)
-	if test $sym_addr != "0x0"; then
-		SYM_TASKLIST_LOCK="lve_tasklist_lock = $sym_addr;"
-	fi
-],[
-	sym_addr=0
-])
-AC_SUBST([SYM_TASKLIST_LOCK])
-AC_MSG_RESULT([$sym_addr])
-])
-
-# -- GET_FS_TYPE
-AC_DEFUN([LVE_SYM_GET_FS_TYPE],[
-AC_MSG_CHECKING([get_fs_type exists in kernel])
-LVE_LINUX_TRY_COMPILE([
-	#include <linux/kernel.h>
-	#include <linux/fs.h>
-],[
-	struct file_system_type *(*sym_addr)(const char *name) = get_fs_type;
-],[
-	LVE_SYM_ADDR(get_fs_type)
-	if test $sym_addr != "0x0"; then
-		SYM_GET_FS_TYPE="lve_get_fs_type = $sym_addr;"
-	fi
-],[
-	sym_addr=0
-])
-AC_SUBST([SYM_GET_FS_TYPE])
-AC_MSG_RESULT([$sym_addr])
-])
-
-# -- VFS_KERN_MOUNT
-AC_DEFUN([LVE_SYM_VFS_KERN_MOUNT],[
-AC_MSG_CHECKING([vfs_kern_mount exists in kernel])
-LVE_LINUX_TRY_COMPILE([
-	#include <linux/module.h>
-	#include <linux/fs.h>
-	#include <linux/mount.h>
-],[
-	struct vfsmount *(*lve_sym)(struct file_system_type *type, int flags, const char *name, void *p) = vfs_kern_mount;
-],[
-	LVE_SYM_ADDR(vfs_kern_mount)
-	if test $sym_addr != "0x0"; then
-		SYM_VFS_KERN_MOUNT="lve_vfs_kern_mount = $sym_addr;"
-	fi
-],[
-	sym_addr=0
-])
-AC_SUBST([SYM_VFS_KERN_MOUNT])
-AC_MSG_RESULT([$sym_addr])
-])
-
-# -- CHECK_FOR_RELEASE
-AC_DEFUN([LVE_SYM_CHECK_FOR_RELEASE],[
-AC_MSG_CHECKING([check_for_release exists in kernel])
-LVE_LINUX_TRY_COMPILE([
-	#include <linux/kernel.h>
-	#include <linux/cgroup.h>
-],[
-	void (*lve_sym)(struct cgroup *cgrp) = 0x0;
-],[
-	LVE_SYM_ADDR(check_for_release)
-	if test $sym_addr != "0x0"; then
-		SYM_CHECK_FOR_RELEASE="lve_check_for_release = $sym_addr;"
-	fi
-],[
-	sym_addr=0
-])
-AC_SUBST([SYM_CHECK_FOR_RELEASE])
-AC_MSG_RESULT([$sym_addr])
-])
-
 # -- GROUP_KERNEL_ATTACH
 AC_DEFUN([LVE_SYM_CGROUP_KERNEL_ATTACH],[
 AC_MSG_CHECKING([cgroup_kernel_attach exists in kernel])
@@ -623,7 +256,9 @@ LVE_LINUX_TRY_COMPILE([
 	#include <linux/cgroup.h>
 	#include <linux/sched.h>
 ],[
-	int (*lve_sym)(struct cgroup *cgrp, struct task_struct *tsk) = cgroup_kernel_attach;
+	int (*lve_sym)(struct cgroup *cgrp, struct task_struct *tsk);
+
+	lve_sym = cgroup_kernel_attach;
 ],[
 	LVE_SYM_ADDR(cgroup_kernel_attach)
 	if test $sym_addr != "0x0"; then
@@ -643,7 +278,9 @@ LVE_LINUX_TRY_COMPILE([
 	#include <linux/module.h>
 	#include <linux/fs_struct.h>
 ],[
-	void (*lve_sym)(struct fs_struct *fs) = free_fs_struct;
+	void (*lve_sym)(struct fs_struct *fs);
+
+	lve_sym = free_fs_struct;
 ],[
 	LVE_SYM_ADDR(free_fs_struct)
 	if test $sym_addr != "0x0"; then
@@ -657,55 +294,15 @@ AC_SUBST([SYM_FREE_FS_STRUCT])
 AC_MSG_RESULT([$sym_addr])
 ])
 
-# -- PUT_MNT_NS
-AC_DEFUN([LVE_SYM_PUT_MNT_NS],[
-AC_MSG_CHECKING([put_mnt_ns exists in kernel])
-LVE_LINUX_TRY_COMPILE([
-	#include <linux/module.h>
-	#include <linux/nsproxy.h>
-	#include <linux/mnt_namespace.h>
-],[
-	int (*lve_sym)(struct mnt_namespace *ns) = put_mnt_ns;
-],[
-	LVE_SYM_ADDR(put_mnt_ns)
-	if test $sym_addr != "0x0"; then
-		SYM_PUT_MNT_NS="lve_put_mnt_ns = $sym_addr;"
-		AC_DEFINE([HAVE_PUT_MNT_NS], [], [put_mnt_ns])
-	fi
-],[
-	sym_addr=0
-])
-AC_SUBST([SYM_PUT_MNT_NS])
-AC_MSG_RESULT([$sym_addr])
-])
-
-# -- FREE_NSPROXY
-AC_DEFUN([LVE_SYM_FREE_NSPROXY],[
-AC_MSG_CHECKING([free_nsproxy exists in kernel])
-LVE_LINUX_TRY_COMPILE([
-	#include <linux/module.h>
-	#include <linux/nsproxy.h>
-],[
-	void (*lve_sym)(struct nsproxy *ns) = free_nsproxy;
-],[
-	LVE_SYM_ADDR(free_nsproxy)
-	if test $sym_addr != "0x0"; then
-		SYM_FREE_NSPROXY="lve_free_nsproxy = $sym_addr;"
-	fi
-],[
-	sym_addr=0
-])
-AC_SUBST([SYM_FREE_NSPROXY])
-AC_MSG_RESULT([$sym_addr])
-])
-
 # OpenVZ-el6 ub_precharge_snapshot
 AC_DEFUN([LVE_SYM_UB_SNAPSHOT],[
 AC_MSG_CHECKING([ub_precharge_snapshot exists in kernel])
 LVE_LINUX_TRY_COMPILE([
 	#include <bc/beancounter.h>
 ],[
-	void (*lve_sym)(struct user_beancounter *ub, int *precharge) = ub_precharge_snapshot;
+	void (*lve_sym)(struct user_beancounter *ub, int *precharge);
+
+	lve_sym = ub_precharge_snapshot;
 ],[
 	LVE_SYM_ADDR(ub_precharge_snapshot)
 	if test $sym_addr != "0x0"; then
@@ -715,66 +312,6 @@ LVE_LINUX_TRY_COMPILE([
 	sym_addr=0
 ])
 AC_SUBST([SYM_UB_SNAPSHOT])
-AC_MSG_RESULT([$sym_addr])
-])
-
-# -- UMOUNT_TREE
-AC_DEFUN([LVE_SYM_UMOUNT_TREE],[
-AC_MSG_CHECKING([umount_tree exists in kernel])
-LVE_LINUX_TRY_COMPILE([
-	#include <linux/kernel.h>
-	#include <linux/fs.h>
-	#include <linux/mount.h>
-],[
-	void (*lve_sym)(struct vfsmount *mnt, int propagate, struct list_head *kill) = 0x0;
-],[
-	LVE_SYM_ADDR(umount_tree)
-	if test $sym_addr != "0x0"; then
-		SYM_UMOUNT_TREE="lve_umount_tree = $sym_addr;"
-	fi
-],[
-	sym_addr=0
-])
-AC_SUBST([SYM_UMOUNT_TREE])
-AC_MSG_RESULT([$sym_addr])
-])
-
-# -- RELEASE_MOUNTS
-AC_DEFUN([LVE_SYM_RELEASE_MOUNTS],[
-AC_MSG_CHECKING([release_mounts exists in kernel])
-LVE_LINUX_TRY_COMPILE([
-	#include <linux/list.h>
-],[
-	void (*lve_sym)(struct list_head *head) = 0x0;
-],[
-	LVE_SYM_ADDR(release_mounts)
-	if test $sym_addr != "0x0"; then
-		SYM_RELEASE_MOUNTS="lve_release_mounts = $sym_addr;"
-	fi
-],[
-	sym_addr=0
-])
-AC_SUBST([SYM_RELEASE_MOUNTS])
-AC_MSG_RESULT([$sym_addr])
-])
-
-# -- VFSMOUNT_LOCK
-AC_DEFUN([LVE_SYM_VFSMOUNT_LOCK],[
-AC_MSG_CHECKING([vfsmount_lock exists in kernel])
-LVE_LINUX_TRY_COMPILE([
-	#include <linux/mount.h>
-	#include <linux/spinlock.h>
-],[
-	spinlock_t sym_addr = vfsmount_lock;
-],[
-	LVE_SYM_ADDR(vfsmount_lock)
-	if test $sym_addr != "0x0"; then
-		SYM_VFSMOUNT_LOCK="lve_vfsmount_lock = $sym_addr;"
-	fi
-],[
-	sym_addr=0
-])
-AC_SUBST([SYM_VFSMOUNT_LOCK])
 AC_MSG_RESULT([$sym_addr])
 ])
 
@@ -800,6 +337,17 @@ AC_SUBST([SYM_UB_SETLIMIT])
 AC_MSG_RESULT([$sym_addr])
 ])
 
+AC_DEFUN([LVE_SYM___FPUT],[
+AC_MSG_CHECKING([__fput exists in kernel])
+	LVE_SYM_ADDR(__fput)
+	if test $sym_addr != "0x0"; then
+		SYM___FPUT="__fput = $sym_addr;"
+		AC_DEFINE([HAVE___FPUT], [], [use __fput])
+	fi
+AC_SUBST([SYM___FPUT])
+AC_MSG_RESULT([$sym_addr])
+])
+
 # -- FIND_TASK_BY_VPID
 AC_DEFUN([LVE_SYM_FIND_TASK_BY_VPID],[
 AC_MSG_CHECKING([find_task_by_vpid exists in kernel])
@@ -807,7 +355,9 @@ LVE_LINUX_TRY_COMPILE([
 	#include <linux/pid.h>
 	#include <linux/sched.h>
 ],[
-	struct task_struct *(*lve_sym)(pid_t nr) = find_task_by_vpid;
+	struct task_struct *(*lve_sym)(pid_t nr);
+
+	lve_sym = find_task_by_vpid;
 ],[
 	LVE_SYM_ADDR(find_task_by_vpid)
 	if test $sym_addr != "0x0"; then
@@ -827,12 +377,14 @@ LVE_LINUX_TRY_COMPILE([
 	#include <bc/beancounter.h>
 	#include <linux/sched.h>
 ],[
-	int (*lve_sym)(struct user_beancounter *ub, struct task_struct *task) = ub_attach_task;
+	int (*lve_sym)(struct user_beancounter *ub, struct task_struct *task);
+
+	lve_sym = ub_attach_task;
 ],[
 	LVE_SYM_ADDR(ub_attach_task)
 	if test $sym_addr != "0x0"; then
-		SYM_UB_ATTACH_TASK="_lve_ub_attach_task = $sym_addr;"
 		AC_DEFINE([HAVE_UB_ATTACH_TASK], [], [use ub_attach_task])
+		SYM_UB_ATTACH_TASK="_lve_ub_attach_task = $sym_addr;"
 	fi
 ],[
 	sym_addr=0
@@ -848,7 +400,9 @@ LVE_LINUX_TRY_COMPILE([
 	#include <bc/beancounter.h>
 	#include <bc/task.h>
 ],[
-	int (*lve_sym)(struct user_beancounter *ub) = ub_attach;
+	int (*lve_sym)(struct user_beancounter *ub);
+
+	lve_sym = ub_attach;
 ],[
 	LVE_SYM_ADDR(ub_attach)
 	if test $sym_addr != "0x0"; then
@@ -862,16 +416,42 @@ AC_SUBST([SYM_UB_ATTACH])
 AC_MSG_RESULT([$sym_addr])
 ])
 
+# -- UB_GET_CSS
+AC_DEFUN([LVE_SYM_UB_GET_CSS],[
+AC_MSG_CHECKING([ub_get_css exists in kernel])
+LVE_LINUX_TRY_COMPILE([
+	#include <linux/cgroup.h>
+	#include <bc/beancounter.h>
+],[
+	struct cgroup_subsys_state *(*lve_sym)(struct user_beancounter *ub, int idx);
+
+	lve_sym = __ub_get_css;
+],[
+	LVE_SYM_ADDR(__ub_get_css)
+	if test $sym_addr != "0x0"; then
+		SYM_UB_GET_CSS="lve_ub_get_css = $sym_addr;"
+	fi
+],[
+	sym_addr=0
+])
+AC_SUBST([SYM_UB_GET_CSS])
+AC_MSG_RESULT([$sym_addr])
+])
+
 # -- GET_BEANCOUNTER_BYUID
 AC_DEFUN([LVE_SYM_GET_BEANCOUNTER_BYUID],[
 AC_MSG_CHECKING([get_beancounter_byuid exists in kernel])
 LVE_LINUX_TRY_COMPILE([
 	#include <bc/beancounter.h>
 ],[
-	struct user_beancounter *(*lve_sym)(uid_t uid, int create) = get_beancounter_byuid;
+	struct user_beancounter *(*lve_sym)(uid_t uid, int create);
+
+	lve_sym = get_beancounter_byuid;
 ],[
 	LVE_SYM_ADDR(get_beancounter_byuid)
 	if test $sym_addr != "0x0"; then
+		AC_DEFINE(HAVE_GET_BEANCOUNTER_BYUID, 1,
+			[get_beancounter_by_uid exists])
 		SYM_GET_BEANCOUNTER_BYUID="lve_get_beancounter_byuid = $sym_addr;"
 	fi
 ],[
@@ -881,16 +461,26 @@ AC_SUBST([SYM_GET_BEANCOUNTER_BYUID])
 AC_MSG_RESULT([$sym_addr])
 ])
 
-# -- MEM_CGROUP_ROOT
-AC_DEFUN([LVE_SYM_MEM_CGROUP_ROOT],[
-AC_MSG_CHECKING([mem_cgroup_root exists in kernel])
-	LVE_SYM_ADDR(mem_cgroup_root)
+# -- GET_BEANCOUNTER_BYUID
+AC_DEFUN([LVE_SYM_GET_BEANCOUNTER_BY_NAME],[
+AC_MSG_CHECKING([get_beancounter_byuid exists in kernel])
+LVE_LINUX_TRY_COMPILE([
+	#include <bc/beancounter.h>
+],[
+	struct user_beancounter *(*lve_sym)(const char *name, int create);
+
+	lve_sym = get_beancounter_by_name;
+],[
+	LVE_SYM_ADDR(get_beancounter_by_name)
 	if test $sym_addr != "0x0"; then
-		SYM_MEM_CGROUP_ROOT="lve_mem_cgroup_root = $sym_addr;"
-		AC_DEFINE(HAVE_MEM_CGROUP_ROOT, 1,
-			[mem_cgroup_root exists])
+		AC_DEFINE(HAVE_GET_BEANCOUNTER_BYNAME, 1,
+			[get_beancounter_by_name exists])
+		SYM_GET_BEANCOUNTER_BYNAME="lve_get_beancounter_by_name = $sym_addr;"
 	fi
-AC_SUBST([SYM_MEM_CGROUP_ROOT])
+],[
+	sym_addr=0
+])
+AC_SUBST([SYM_GET_BEANCOUNTER_BYNAME])
 AC_MSG_RESULT([$sym_addr])
 ])
 
@@ -908,16 +498,20 @@ AC_MSG_RESULT([$sym_addr])
 ])
 
 # -- VE_TASK_INFO
+AC_DEFUN([LVE_VE_CLEANUP_CHAIN],[
 AC_MSG_CHECKING([VE_CLEANUP_CHAIN in ve_proto.h])
 LVE_LINUX_TRY_COMPILE([
 	#include <linux/ve_proto.h>
 ],[
-	int chain = VE_CLEANUP_CHAIN;
+	int chain;
+
+	chain = VE_CLEANUP_CHAIN;
 ],[
 	AC_MSG_RESULT(yes)
 	AC_DEFINE([HAVE_VE_CLEANUP_CHAIN], [], [have ve_cleanup_chain in ve_proto.h])
 ],[
 	AC_MSG_RESULT(no)
+])
 ])
 
 AC_DEFUN([LVE_DO_EACH_THREAD_ALL],[
@@ -952,54 +546,15 @@ LVE_LINUX_TRY_COMPILE([
 ])
 ])
 
-# -- UB_GET_MEM_CGROUP_PARMS
-AC_DEFUN([LVE_SYM_UB_GET_MEM_CGROUP_PARMS],[
-AC_MSG_CHECKING([ub_get_mem_cgroup_parms exists in kernel])
-LVE_LINUX_TRY_COMPILE([
-	#include <bc/beancounter.h>
-],[
-	void (*lve_sym)(struct user_beancounter *ub, struct ubparm *p, \
-			struct ubparm *s, struct ubparm *k) = ub_get_mem_cgroup_parms;
-],[
-	LVE_SYM_ADDR(ub_get_mem_cgroup_parms)
-	if test $sym_addr != "0x0"; then
-		SYM_UB_GET_MEM_CGROUP_PARMS="lve_ub_get_mem_cgroup_parms = $sym_addr;"
-		AC_DEFINE([HAVE_UB_GET_MEM_CGROUP_PARMS], [], [have ub_get_mem_cgroup_parms])
-	fi
-],[
-	sym_addr=0
-])
-AC_SUBST([SYM_UB_GET_MEM_CGROUP_PARMS])
-AC_MSG_RESULT([$sym_addr])
-])
-
-# -- COMPAT_ALLOC_USER_SPACE
-AC_DEFUN([LVE_COMPAT_ALLOC_USER_SPACE],[
-AC_MSG_CHECKING([compat_alloc_user_space is exported])
-LVE_LINUX_TRY_COMPILE([
-	#include <linux/compat.h>
-],[
-	void __user *ptr = compat_alloc_user_space(1000);
-],[
-	LVE_SYM_ADDR(compat_alloc_user_space)
-	if test $sym_addr != "0x0"; then
-		SYM_COMPAT_ALLOC_USER_SPACE="lve_compat_alloc_user_space = $sym_addr;"
-		AC_DEFINE([HAVE_COMPAT_ALLOC_USER_SPACE], [], [compat_alloc_user_space exported])
-	fi
-],[
-	sym_addr=0
-])
-AC_SUBST([SYM_COMPAT_ALLOC_USER_SPACE])
-AC_MSG_RESULT([$sym_addr])
-])
-
 # -- UB_SYNC_MEMCG
 AC_DEFUN([LVE_SYM_UB_SYNC_MEMCG],[
 AC_MSG_CHECKING([ub_sync_memcg is exported])
 LVE_LINUX_TRY_COMPILE([
 	#include <bc/beancounter.h>
 ],[
-	void (*lve_sym)(struct user_beancounter *ub) = ub_sync_memcg;
+	void (*lve_sym)(struct user_beancounter *ub);
+
+	lve_sym = ub_sync_memcg;
 ],[
 	LVE_SYM_ADDR(ub_sync_memcg)
 	if test $sym_addr != "0x0"; then
@@ -1013,19 +568,6 @@ AC_SUBST([SYM_UB_SYNC_MEMCG])
 AC_MSG_RESULT([$sym_addr])
 ])
 
-# -- CREATE_NEW_NAMESPACES
-AC_DEFUN([LVE_SYM_CREATE_NEW_NAMESPACES],[
-AC_MSG_CHECKING([create_new_namespaces exists in kernel])
-	LVE_SYM_ADDR(create_new_namespaces)
-	if test $sym_addr != "0x0"; then
-		SYM_CREATE_NEW_NAMESPACES="create_new_namespaces = $sym_addr;"
-		AC_DEFINE(HAVE_CREATE_NEW_NAMESPACES, 1,
-			[create_new_namespaces exists])
-	fi
-AC_SUBST([SYM_CREATE_NEW_NAMESPACES])
-AC_MSG_RESULT([$sym_addr])
-])
-
 # -- UB_CGROUP_MNT
 AC_DEFUN([LVE_SYM_UB_CGROUP_MNT],[
 AC_MSG_CHECKING([ub_cgroup_mnt exists in kernel])
@@ -1036,19 +578,6 @@ AC_MSG_CHECKING([ub_cgroup_mnt exists in kernel])
 	fi
 AC_SUBST([SYM_UB_CGROUP_MNT])
 AC_MSG_RESULT([$sym_addr])
-])
-
-# -- UB_BOUND_CGROUP_MNT
-AC_DEFUN([LVE_SYM_UB_BOUND_CGROUP_MNT],[
-AC_MSG_CHECKING([ub_bound_cgroup_mnt exists in kernel])
-	LVE_SYM_ADDR(ub_bound_cgroup_mnt)
-	if test $sym_addr != "0x0"; then
-		SYM_UB_BOUND_CGROUP_MNT="lve_ub_bound_cgroup_mnt = $sym_addr;"
-		AC_DEFINE(HAVE_UB_BOUND_CGROUP_MNT, 1,
-			[ub_bound_cgroup_mnt exists])
-	fi
-	AC_SUBST([SYM_UB_BOUND_CGROUP_MNT])
-	AC_MSG_RESULT([$sym_addr])
 ])
 
 AC_DEFUN([LVE_SYM_CGROUP_ITER_START],[
@@ -1137,7 +666,9 @@ LVE_LINUX_TRY_COMPILE([
 	#include <linux/cgroup.h>
 	#include <linux/sched.h>
 ],[
-	int (*lve_sym)(struct cgroup *cg, struct task_struct *tsk) = cgroup_attach_task;
+	int (*lve_sym)(struct cgroup *cg, struct task_struct *tsk);
+
+	lve_sym = cgroup_attach_task;
 ],[
 	AC_MSG_RESULT(yes)
 	AC_DEFINE(HAVE_2ARGS_CGROUP_ATTACH_TASK, 1, [cgroup_attach_task has 2 args])
@@ -1158,66 +689,291 @@ AC_SUBST([SYM_CGROUP_MUTEX])
 AC_MSG_RESULT([$sym_addr])
 ])
 
+# -- CSS_SET_LOCK
+AC_DEFUN([LVE_SYM_CSS_SET_LOCK],[
+AC_MSG_CHECKING([css_set_lock exists in kernel])
+        LVE_SYM_ADDR(css_set_lock)
+        if test $sym_addr != "0x0"; then
+                SYM_CSS_SET_LOCK="lve_css_set_lock = $sym_addr;"
+                AC_DEFINE(HAVE_CSS_SET_LOCK, [], [css_set_lock exists])
+        fi
+AC_SUBST([SYM_CSS_SET_LOCK])
+AC_MSG_RESULT([$sym_addr])
+])
+
+# -- FREEZER_CHANGE_STATE
+AC_DEFUN([LVE_SYM_FREEZER_CHANGE_STATE],[
+AC_MSG_CHECKING([freezer_change_state exists in kernel])
+LVE_LINUX_TRY_COMPILE([
+	#include <linux/cgroup.h>
+	#include <linux/freezer.h>
+],[
+	int (*lve_sym)(struct cgroup *c, enum freezer_state s);
+
+	lve_sym = freezer_change_state;
+],[
+	LVE_SYM_ADDR(freezer_change_state)
+	if test $sym_addr != "0x0"; then
+		SYM_FREEZER_CHANGE_STATE="lve_freezer_change_state = $sym_addr;"
+		AC_DEFINE(HAVE_FREEZER_CHANGE_STATE, [], [freezer_change_state exists])
+	fi
+],[
+	sym_addr=0
+])
+AC_SUBST([SYM_FREEZER_CHANGE_STATE])
+AC_MSG_RESULT([$sym_addr])
+])
+
+# -- TRY_TO_FREE_GANG_PAGES
+AC_DEFUN([LVE_SYM_TRY_TO_FREE_GANG_PAGES],[
+AC_MSG_CHECKING([try_to_free_gang_pages exists in kernel])
+LVE_LINUX_TRY_COMPILE([
+	#include <linux/mm.h>
+	#include <linux/swap.h>
+],[
+	unsigned long (*lve_sym)(struct gang_set *gs, gfp_t gfp_mask);
+
+	lve_sym = try_to_free_gang_pages;
+],[
+	LVE_SYM_ADDR(try_to_free_gang_pages)
+	if test $sym_addr != "0x0"; then
+		SYM_TRY_TO_FREE_GANG_PAGES="lve_try_to_free_gang_pages = $sym_addr;"
+		AC_DEFINE(HAVE_TRY_TO_FREE_GANG_PAGES, [], [try_to_free_gang_pages exists])
+	fi
+],[
+	sym_addr=0
+])
+AC_SUBST([SYM_TRY_TO_FREE_GANG_PAGES])
+AC_MSG_RESULT([$sym_addr])
+])
+
+# -- TRY_TO_FREE_MEM_CGROUP_PAGES
+AC_DEFUN([LVE_SYM_TRY_TO_FREE_MEM_CGROUP_PAGES],[
+AC_MSG_CHECKING([try_to_free_mem_cgroup_pages exists in kernel])
+LVE_LINUX_TRY_COMPILE([
+	#include <linux/mm.h>
+	#include <linux/swap.h>
+],[
+	unsigned long (*lve_sym)(struct mem_cgroup *memcg,
+				unsigned long nr_pages,
+				gfp_t gfp_mask,
+				bool noswap);
+
+	lve_sym = try_to_free_mem_cgroup_pages;
+],[
+	LVE_SYM_ADDR(try_to_free_mem_cgroup_pages)
+	if test $sym_addr != "0x0"; then
+		SYM_TRY_TO_FREE_MEM_CGROUP_PAGES="lve_try_to_free_mem_cgroup_pages = $sym_addr;"
+		AC_DEFINE(HAVE_TRY_TO_FREE_MEM_CGROUP_PAGES, [], [try_to_free_mem_cgroup_pages exists])
+	fi
+],[
+	sym_addr=0
+])
+
+AC_SUBST([SYM_TRY_TO_FREE_MEM_CGROUP_PAGES])
+AC_MSG_RESULT([$sym_addr])
+])
+
+
+# -- MEM_CGROUP_FROM_CONT
+AC_DEFUN([LVE_SYM_MEM_CGROUP_FROM_CONT],[
+AC_MSG_CHECKING([mem_cgroup_from_cont exists in kernel])
+LVE_LINUX_TRY_COMPILE([
+	#include <linux/memcontrol.h>
+],[
+	struct mem_cgroup *(*lve_sym)(struct cgroup *cont);
+
+	lve_sym = mem_cgroup_from_cont;
+],[
+	LVE_SYM_ADDR(mem_cgroup_from_cont)
+	if test $sym_addr != "0x0"; then
+		SYM_MEM_CGROUP_FROM_CONT="lve_mem_cgroup_from_cont = $sym_addr;"
+		AC_DEFINE(HAVE_MEM_CGROUP_FROM_CONT, [], [mem_cgroup_from_cont exists])
+	fi
+],[
+	sym_addr=0
+])
+
+AC_SUBST([SYM_MEM_CGROUP_FROM_CONT])
+AC_MSG_RESULT([$sym_addr])
+])
+
+# -- TASKLIST_LOCK
+AC_DEFUN([LVE_SYM_TASKLIST_LOCK],[
+AC_MSG_CHECKING([tasklist_lock exists in kernel])
+	LVE_SYM_ADDR(tasklist_lock)
+	if test $sym_addr != "0x0"; then
+		SYM_TASKLIST_LOCK="tasklist_lock = $sym_addr;"
+		AC_DEFINE(HAVE_TASKLIST_LOCK, [], [tasklist_lock exists])
+	fi
+AC_SUBST([SYM_TASKLIST_LOCK])
+AC_MSG_RESULT([$sym_addr])
+])
+
+# -- SWITCH_TASK_NS
+AC_DEFUN([LVE_SYM_SWITCH_TASK_NS],[
+AC_MSG_CHECKING([switch_task_namespaces exists in kernel])
+LVE_LINUX_TRY_COMPILE([
+	#include <linux/nsproxy.h>
+],[
+	void (*lve_sym)(struct task_struct *tsk, struct nsproxy *new);
+
+	lve_sym = switch_task_namespaces;
+],[
+	LVE_SYM_ADDR(switch_task_namespaces)
+	if test $sym_addr != "0x0"; then
+		SYM_SWITCH_TASK_NS="switch_task_namespaces = $sym_addr;"
+	fi
+],[
+	sym_addr=0
+])
+
+AC_SUBST([SYM_SWITCH_TASK_NS])
+AC_MSG_RESULT([$sym_addr])
+])
+
+# -- FREE_NSPROXY
+AC_DEFUN([LVE_SYM_FREE_NSPROXY],[
+AC_MSG_CHECKING([free_nsproxy exists in kernel])
+LVE_LINUX_TRY_COMPILE([
+	#include <linux/nsproxy.h>
+],[
+	void (*lve_sym)(struct nsproxy *p);
+
+	lve_sym = free_nsproxy;
+],[
+	LVE_SYM_ADDR(free_nsproxy)
+	if test $sym_addr != "0x0"; then
+		SYM_FREE_NSPROXY="free_nsproxy = $sym_addr;"
+	fi
+],[
+	sym_addr=0
+])
+AC_SUBST([SYM_FREE_NSPROXY])
+AC_MSG_RESULT([$sym_addr])
+])
+
+# -- COPY_NAMESPACES - prototype checked before
+AC_DEFUN([LVE_SYM_COPY_NAMESPACES],[
+AC_MSG_CHECKING([copy_namespaces export from kernel ])
+	LVE_SYM_ADDR(copy_namespaces)
+	if test $sym_addr != "0x0"; then
+		SYM_COPY_NAMESPACES="copy_namespaces = $sym_addr;"
+	fi
+AC_SUBST([SYM_COPY_NAMESPACES])
+AC_MSG_RESULT([$sym_addr])
+])
+
+# -- NETWORK TRAFFIC CONTROL
+AC_DEFUN([LVE_TRAF_CONTROL],[
+AC_MSG_CHECKING([network traffic control exists in kernel])
+LVE_LINUX_TRY_COMPILE([
+	#include <linux/virtinfo.h>
+],[
+	int rc;
+
+	rc = VIRTINFO_TRAF_IN_ACCOUNT | VIRTINFO_TRAF_OUT_ACCOUNT | VIRTINFO_TRAF_OUT_MARK;
+],[
+	AC_DEFINE(HAVE_LVE_TRAF_CONTROL, [], [network traffic control exists])
+	AC_MSG_RESULT(yes)
+],[
+	AC_MSG_RESULT(no)
+])
+])
+
+AC_DEFUN([LVE_PORT_CONTROL],[
+AC_MSG_CHECKING([virtinfo.h has VIRTINFO_SOCKADDR])
+LVE_LINUX_TRY_COMPILE([
+	#include <linux/virtinfo.h>
+],[
+	int rc;
+
+	rc = VIRTINFO_SOCKADDR;
+],[
+	AC_DEFINE(HAVE_LVE_PORT_CONTROL, [], [network tcp port control exists])
+	AC_MSG_RESULT(yes)
+],[
+	AC_MSG_RESULT(no)
+])
+])
+
+AC_DEFUN([LVE_CHECK_1ARG_CGROUP_POST_FORK],[
+AC_MSG_CHECKING([cgroup_post_fork has 1 arg])
+LVE_LINUX_TRY_COMPILE([
+	#include <linux/cgroup.h>
+],[
+	cgroup_post_fork(NULL);
+],[
+	AC_DEFINE(HAVE_CGROUP_POST_FORK_WITH_1ARG, 1, [cgroup_post_fork has 1 arg])
+	AC_MSG_RESULT(yes)
+],[
+	AC_MSG_RESULT(no)
+])
+])
+
+AC_DEFUN([LVE_CHECK_2ARGS_CGROUP_POST_FORK],[
+AC_MSG_CHECKING([cgroup_post_fork has 2 args])
+LVE_LINUX_TRY_COMPILE([
+	#include <linux/cgroup.h>
+],[
+	void *ss_priv[CGROUP_CANFORK_COUNT];
+	cgroup_post_fork(NULL, ss_priv);
+],[
+	AC_DEFINE(HAVE_CGROUP_POST_FORK_WITH_2ARGS, 1, [cgroup_post_fork has 2 args])
+	AC_MSG_RESULT(yes)
+],[
+	AC_MSG_RESULT(no)
+])
+])
+
 # resolve symbols into addresses
 # todo: add kernel<>symbol present verification, fail if symbol not present
 #       templates for a symbols
 #       symplify with other configure checks
 AC_DEFUN([LVE_SYMBOLS],[
 #common
-	LVE_SYM_SYM_GET
-	LVE_SYM_JPROBE_RET
-	LVE_SYM_JPROBES_REG
-	LVE_SYM_JPROBES_UNREG
-	LVE_SYM_TASK_PUT_FINAL
 	LVE_SYM_FS_PWD
 	LVE_SYM_FS_ROOT
-#el5
-	LVE_SYM_FS_PUT
-	LVE_SYM_NS_PUT_FINAL
+	LVE_TRAF_CONTROL
+	LVE_PORT_CONTROL
 #el6
 	LVE_SYM_COPY_FS
-	LVE_SYM_NSPROXY_DUP
-	LVE_SYM_NS_SWITCH
-	LVE_SYM_FTRACE_PRINTK
+	LVE_SYM_FREEZER_CHANGE_STATE
+	LVE_SYM_TRY_TO_FREE_GANG_PAGES
+	LVE_SYM_CSS_SET_LOCK
 #el7
-	LVE_COMPAT_ALLOC_USER_SPACE
-	LVE_SYM_CSS_PUT
 	LVE_SYM_UB_SYNC_MEMCG
-	LVE_SYM_CREATE_NEW_NAMESPACES
 	LVE_SYM_UB_CGROUP_MNT
-	LVE_SYM_UB_BOUND_CGROUP_MNT
 	LVE_SYM_CGROUP_ITER_START
 	LVE_SYM_CGROUP_ITER_NEXT
 	LVE_SYM_CGROUP_ITER_END
 	LVE_SYM_CGROUP_ATTACH_TASK
 	LVE_2ARGS_CGROUP_ATTACH_TASK
 	LVE_SYM_CGROUP_MUTEX
+	LVE_SYM_TRY_TO_FREE_MEM_CGROUP_PAGES
+	LVE_SYM_MEM_CGROUP_FROM_CONT
+	LVE_SYM___FPUT
 
 #un-patched RH
-	LVE_SYM_TASKLIST_LOCK
-	LVE_SYM_GET_FS_TYPE
-	LVE_SYM_VFS_KERN_MOUNT
-	LVE_SYM_CHECK_FOR_RELEASE
 	LVE_SYM_CGROUP_KERNEL_ATTACH
 	LVE_SYM_FREE_FS_STRUCT
-	LVE_SYM_PUT_MNT_NS
+	LVE_SYM_TASKLIST_LOCK
+	LVE_SYM_SWITCH_TASK_NS
 	LVE_SYM_FREE_NSPROXY
-	LVE_SYM_COPY_MNT_NS
-	LVE_SYM_UMOUNT_TREE
-	LVE_SYM_RELEASE_MOUNTS
-	LVE_SYM_VFSMOUNT_LOCK
-
+	LVE_SYM_COPY_NAMESPACES
+	
 #unpathced VZ
+	LVE_VE_CLEANUP_CHAIN
 	LVE_SYM_UB_SNAPSHOT
 	LVE_SYM_UB_SETLIMIT
 
 	LVE_SYM_FIND_TASK_BY_VPID
 	LVE_SYM_UB_ATTACH_TASK
+	LVE_SYM_UB_GET_CSS
 	LVE_SYM_UB_ATTACH
 	LVE_SYM_GET_BEANCOUNTER_BYUID
-	LVE_SYM_MEM_CGROUP_ROOT
+	LVE_SYM_GET_BEANCOUNTER_BY_NAME
 	LVE_SYM_UB_CGROUP_ROOT
-	LVE_SYM_UB_GET_MEM_CGROUP_PARMS
 ])
 
 # Checks for programs.
@@ -1288,36 +1044,19 @@ LVE_LINUX_MAPFILE
 
 CGROUP=0
 OPENVZ=0
+rhver=$(awk '/RHEL_MAJOR =/ {print [$]3;}' $KERNEL/Makefile)
 LVE_LINUX_CONFIG(CONFIG_CGROUPS, CGROUP=1)
-LVE_LINUX_CONFIG(CONFIG_BEANCOUNTERS, OPENVZ=1)
+LVE_LINUX_CONFIG(CONFIG_BEANCOUNTERS, OPENVZ=$rhver)
 AC_SUBST(CGROUP)
 AC_SUBST(OPENVZ)
 
-LVE_LINUX_INCLUDE([namespace.h], 
-		  [AC_DEFINE([HAVE_NAMESPACE_H], [], [namespace.h exist on kernel])]) 
-
-LVE_LINUX_INCLUDE([mnt_namespace.h], 
-		  [AC_DEFINE([HAVE_MNT_NAMESPACE_H], [], [mnt_namespace.h exist on kernel])]) 
-
-LVE_LINUX_INCLUDE([path.h],
-		  [AC_DEFINE([HAVE_PATH_H], [], [path.h exists on kernel])])
+AC_DEFINE_UNQUOTED([OPENVZ_VERSION], [$OPENVZ], [OpenVZ kernel version])
 
 LVE_DO_EACH_THREAD_ALL
 LVE_IN_UB_MEMCG_ATTACH
 
-# CL patched kernel
-LVE_LINUX_CHECK_SYMBOL([dup_mnt_ns],
-			[AC_DEFINE([HAVE_DUP_MNT_NS], [], [dup_mnt_ns exist on kernel])])
-
 LVE_LINUX_CHECK_SYMBOL([proc_root], 
 			[AC_DEFINE([HAVE_PROC_ROOT], [], [proc_root exist on kernel])])
-
-# new NS API
-LVE_LINUX_CHECK_SYMBOL([switch_task_namespaces],
-			[AC_DEFINE([HAVE_SWITCH_NS], [], [switch_task_namespace exist on kernel])])
-
-LVE_LINUX_CHECK_SYMBOL([find_task_by_pid_type_ve],
-			[AC_DEFINE([HAVE_TASK_PID_TYPE_VE], [], [new pid API])])
 
 LVE_LINUX_CHECK_SYMBOL([loadavg_ptr_init],
 			[AC_DEFINE([HAVE_LOADAVG_PTR], [], [new loadavg hook])])
@@ -1423,15 +1162,93 @@ LVE_LINUX_TRY_COMPILE([
 	AC_MSG_RESULT([no])
 ])
 
-LVE_3ARGS_COPY_MNT_NS
+# -- HAVE_COPY_NS_WITH_2ARGS
+AC_MSG_CHECKING([copy_namespaces has 2 args])
+LVE_LINUX_TRY_COMPILE([
+	#include <linux/nsproxy.h>
+],[
+	copy_namespaces(0UL, NULL);
+],[
+	AC_DEFINE(HAVE_COPY_NS_WITH_2ARGS, 1, [copy_namespaces has 2 args])
+	AC_MSG_RESULT([yes])
+],[
+	AC_MSG_RESULT([no])
+])
+
+# -- HAVE_COPY_NS_WITH_3ARGS
+AC_MSG_CHECKING([copy_namespaces has 3 args])
+LVE_LINUX_TRY_COMPILE([
+	#include <linux/nsproxy.h>
+],[
+	copy_namespaces(0UL, NULL, -1);
+],[
+	AC_DEFINE(HAVE_COPY_NS_WITH_3ARGS, 1, [copy_namespaces has 3 args])
+	AC_MSG_RESULT([yes])
+],[
+	AC_MSG_RESULT([no])
+])
+
+# -- HAVE_WAIT_BIT_4ARGS
+AC_MSG_CHECKING([wait_on_bit have 4 args])
+LVE_LINUX_TRY_COMPILE([
+	#include <linux/wait.h>
+],[
+	wait_on_bit(NULL, 0, NULL, 0);
+],[
+	AC_DEFINE(HAVE_WAIT_BIT_4ARGS, 1, [wait_on_bit have 4 args])
+	AC_MSG_RESULT([yes])
+],[
+	AC_MSG_RESULT([no])
+])
+
+# -- HAVE_BSEARCH
+AC_MSG_CHECKING([bsearch exist in kernel])
+LVE_LINUX_TRY_COMPILE([
+	#include <linux/bsearch.h>
+],[
+	bsearch(NULL, NULL, 0, 0, NULL);
+],[
+	AC_DEFINE(HAVE_BSEARCH, 1, [bsearch exist in kernel])
+	AC_MSG_RESULT([yes])
+],[
+	AC_MSG_RESULT([no])
+])
+
+# -- HAVE SUB UBC
+AC_MSG_CHECKING([sub ubc exist in kernel])
+LVE_LINUX_TRY_COMPILE([
+	#include <bc/beancounter.h>
+],[
+	get_sub_beancounter_by_name(NULL, 10, 1);
+],[
+	AC_DEFINE(HAVE_SUB_UBC, 1, [sub ubc exist in kernel])
+	AC_MSG_RESULT([yes])
+],[
+	AC_MSG_RESULT([no])
+])
+
+# -- HAVE PROC EXIT CONNECTOR
+AC_MSG_CHECKING([proc_exit_connector properly defined in kernel])
+LVE_LINUX_TRY_COMPILE([
+	#include <linux/cn_proc.h>
+],[
+	struct task_struct *tsk = NULL;
+	proc_exit_connector(tsk);
+],[
+	AC_DEFINE(HAVE_PROC_EXIT_CONNECTOR, 1, [proc_exit_connector properly defined in kernel])
+	AC_MSG_RESULT([yes])
+],[
+	AC_MSG_RESULT([no])
+])
+
 LVE_EXEC_NOTIFIER
-LVE_BC_FORK_SUB
 LVE_UB_SETLIMIT_BY_ID
-LVE_PATH_LOOKUP
 LVE_CRED_EUID_IS_PLAIN
-LVE_UB_HAS_RL_STEP
+
+LVE_CHECK_1ARG_CGROUP_POST_FORK
+LVE_CHECK_2ARGS_CGROUP_POST_FORK
 
 LVE_SYMBOLS
 # Output
-AC_CONFIG_FILES([src/Makefile src/mod_info.h src/lve.ldscript])
+AC_CONFIG_FILES([src/Makefile src/mod_info.h src/ld/lve.ldscript])
 AC_OUTPUT

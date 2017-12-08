@@ -1,38 +1,61 @@
 ifneq ($(KERNELRELEASE),)
-    obj-m	:= lve.o
-    lve-objs	:= light_ve.o lve-mod.o tags.o lve_procfs.o lve_list.o
-    lve-objs	+= lve_exec.o kernel_exp.o lve_ns.o
-    lve-objs	+= lve_resource.o lve_stats.o lve_hooks.o
-    lve-objs	+= lve_global_params.o
-ifeq ($(CGROUP),1)
-ifeq ($(OPENVZ),1)
-    lve-objs	+= os/openvz_cgroups.o
-else
-    lve-objs	+= os/cgroups.o
-endif
-    lve-objs	+= os/cgroup_lib.o
-else
-    $(error Cloud Linux 5 is not supported by this lve-kmod branch)
+ifeq ($(CGROUP),0)
+     $(error Cloud Linux 5 is not supported by this lve-kmod branch)
 endif
 
-    EXTRA_LDFLAGS := -T $(src)/lve.ldscript
+    obj-m		:= kmodlve.o
+    kmodlve-objs	:= lve_cmd.o lve_mod.o lve_tags.o lve_procfs.o lve_list.o
+    kmodlve-objs	+= lve_exec.o lve_ns.o
+    kmodlve-objs	+= lve_resource.o lve_hooks.o
+    kmodlve-objs	+= lve_global_params.o
+    kmodlve-objs	+= lve_task_locker.o
+    kmodlve-objs	+= lve_lvp.o
+    kmodlve-objs	+= lve_map.o
+    kmodlve-objs	+= lve_net.o net/lve_net_traf.o net/lve_net_port.o
+    kmodlve-objs	+= lve_loadavg.o os/load_avg.o
+    kmodlve-objs	+= os/kernel_exp.o
+    kmodlve-objs	+= os/cgroup_lib.o
+    kmodlve-objs	+= os/mm.o
+    kmodlve-objs	+= os/bsearch.o
+
+ifeq ($(OPENVZ),6)
+    kmodlve-objs	+= os/openvz6.o
+endif
+ifeq ($(OPENVZ),7)
+    kmodlve-objs	+= os/openvz7.o
+endif
+ifeq ($(OPENVZ),0)
+    kmodlve-objs	+= os/cgroups.o
+    kmodlve-objs	+= os/linux_callchain.o
+else
+    kmodlve-objs	+= os/openvz_connect.o
+    kmodlve-objs	+= os/ubc_lib.o
+    kmodlve-objs	+= os/openvz_iolimits.o
+    kmodlve-objs	+= os/openvz_callchain.o
+endif
+
+    EXTRA_LDFLAGS := -T $(src)/ld/lve.ldscript
 else
     KDIR        := @KERNEL@
     PWD         := @PWD@
 
 default:
-	$(MAKE) -C $(KDIR) SUBDIRS=$(PWD) CGROUP=@CGROUP@ OPENVZ=@OPENVZ@ EXTRA_CFLAGS="-Werror -I @COMMON@ -I $(KDIR) @DEBUG_FL@ -DCGROUP=@CGROUP@ -DOPENVZ=@OPENVZ@ @LVE_PER_VE@" modules
+	$(MAKE) -C $(KDIR) SUBDIRS=$(PWD) CGROUP=@CGROUP@ OPENVZ=@OPENVZ@ EXTRA_CFLAGS="-Werror -I @COMMON@ -I $(KDIR) -I $(PWD)/include @DEBUG_FL@ @LVE_PER_VE@" modules
 
 endif
+
+install:
+	$(MAKE) -C $(KDIR) SUBDIRS=$(PWD) CGROUP=@CGROUP@ OPENVZ=@OPENVZ@ modules_install
 
 clean:
 	$(MAKE) -C $(KDIR) SUBDIRS=$(PWD) CGROUP=@CGROUP@ OPENVZ=@OPENVZ@ clean
 	rm -f Module.markers Module.symvers modules.order
 
 load:
-	insmod ./lve.ko
+	modprobe -q vzdev || true
+	insmod ./kmodlve.ko
 
 unload:
-	rmmod lve
+	rmmod kmodlve
 
 
